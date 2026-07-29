@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search - NewsFeed</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="/css/style.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/feeds">
+            <i class="bi bi-rss-fill me-2 text-warning"></i>NewsFeed
+        </a>
+        <div class="navbar-nav ms-auto">
+            <a class="nav-link" href="/feeds">Sources</a>
+            <a class="nav-link active" href="/search">Search</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <h2 class="mb-4"><i class="bi bi-search me-2"></i>Search Articles</h2>
+
+    <form method="get" action="/search" class="mb-4">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label for="searchInput" class="form-label">Keyword</label>
+                <input type="text" class="form-control" id="searchInput" name="q"
+                       th:value="${q}" placeholder="Search articles...">
+            </div>
+            <div class="col-md-3">
+                <label for="sourceFilter" class="form-label">Source</label>
+                <select class="form-select" id="sourceFilter" name="sourceId">
+                    <option value="">All Sources</option>
+                    <option th:each="source : ${sources}"
+                            th:value="${source.id}"
+                            th:selected="${sourceId != null && sourceId == source.id}"
+                            th:text="${source.name}">Source</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="sortSelect" class="form-label">Sort By</label>
+                <select class="form-select" id="sortSelect" name="sort">
+                    <option value="newest" th:selected="${sort == 'newest'}">Newest First</option>
+                    <option value="oldest" th:selected="${sort == 'oldest'}">Oldest First</option>
+                    <option value="title" th:selected="${sort == 'title'}">Title A-Z</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-search me-1"></i>Search
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <div th:if="${articles.totalElements > 0}" class="mb-3 text-muted">
+        Found <span th:text="${articles.totalElements}">0</span> articles
+        <span th:if="${articles.totalPages > 1}">
+            (page <span th:text="${articles.number + 1}">1</span>
+            of <span th:text="${articles.totalPages}">1</span>)
+        </span>
+    </div>
+
+    <div th:if="${articles.empty}" class="text-center text-muted py-5">
+        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+        <p class="mt-2">No articles found. Try a different search term or add more feed sources.</p>
+    </div>
+
+    <div class="list-group">
+        <a th:each="article : ${articles.content}"
+           th:href="${article.link}" target="_blank"
+           class="list-group-item list-group-item-action bg-dark border-secondary mb-2 article-card">
+            <div class="d-flex w-100 justify-content-between">
+                <h5 class="mb-1 text-light" th:text="${article.title}">Article Title</h5>
+                <small class="text-muted text-nowrap ms-3"
+                       th:if="${article.publishedAt}"
+                       th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd HH:mm')}">
+                    Date
+                </small>
+            </div>
+            <p class="mb-1 text-secondary article-summary"
+               th:if="${article.summary}"
+               th:utext="${#strings.abbreviate(#strings.stripTags(article.summary), 200)}">
+                Summary text...
+            </p>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+                <small class="text-info">
+                    <i class="bi bi-rss me-1"></i>
+                    <span th:if="${article.feedSource != null}" th:text="${article.feedSource.name}">Source</span>
+                </small>
+                <small th:if="${article.author}" class="text-muted">
+                    <i class="bi bi-person me-1"></i><span th:text="${article.author}">Author</span>
+                </small>
+            </div>
+        </a>
+    </div>
+
+    <nav th:if="${articles.totalPages > 1}" class="mt-4">
+        <ul class="pagination justify-content-center">
+            <li class="page-item" th:classappend="${articles.first} ? 'disabled'">
+                <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, sort=${sort}, size=${size}, page=${articles.number - 1})}">
+                    <i class="bi bi-chevron-left"></i> Previous
+                </a>
+            </li>
+            <th:block th:each="pageNum : ${#numbers.sequence(0, articles.totalPages - 1)}">
+                <li class="page-item" th:if="${pageNum >= articles.number - 2 && pageNum <= articles.number + 2}"
+                    th:classappend="${pageNum == articles.number} ? 'active'">
+                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, sort=${sort}, size=${size}, page=${pageNum})}"
+                       th:text="${pageNum + 1}">1</a>
+                </li>
+            </th:block>
+            <li class="page-item" th:classappend="${articles.last} ? 'disabled'">
+                <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, sort=${sort}, size=${size}, page=${articles.number + 1})}">
+                    Next <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

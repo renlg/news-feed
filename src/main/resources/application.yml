@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/newsfeed;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  thymeleaf:
+    cache: false
+
+server:
+  port: 8080
+
+newsfeed:
+  fetch:
+    default-interval-minutes: 15
+    max-articles-per-feed: 500

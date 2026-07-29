@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feed Sources - NewsFeed</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="/css/style.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/feeds">
+            <i class="bi bi-rss-fill me-2 text-warning"></i>NewsFeed
+        </a>
+        <div class="navbar-nav ms-auto">
+            <a class="nav-link active" href="/feeds">Sources</a>
+            <a class="nav-link" href="/search">Search</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <div th:if="${successMsg}" class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-2"></i><span th:text="${successMsg}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    <div th:if="${errorMsg}" class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i><span th:text="${errorMsg}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">RSS Feed Sources</h2>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#feedModal"
+                onclick="resetForm()">
+            <i class="bi bi-plus-lg me-1"></i>Add Source
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-dark table-striped table-hover align-middle">
+            <thead>
+            <tr>
+                <th>Status</th>
+                <th>Name</th>
+                <th>URL</th>
+                <th>Protocol</th>
+                <th>Interval</th>
+                <th>Last Fetched</th>
+                <th>Articles</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="source : ${sources}">
+                <td>
+                    <form th:action="@{/feeds/{id}/toggle(id=${source.id})}" method="post" class="d-inline">
+                        <input type="hidden" name="enabled" th:value="${!source.enabled}">
+                        <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent">
+                            <span th:if="${source.enabled}" class="badge bg-success">
+                                <i class="bi bi-check-circle"></i> Active
+                            </span>
+                            <span th:unless="${source.enabled}" class="badge bg-secondary">
+                                <i class="bi bi-pause-circle"></i> Disabled
+                            </span>
+                        </button>
+                    </form>
+                </td>
+                <td class="fw-semibold" th:text="${source.name}">Source Name</td>
+                <td>
+                    <a th:href="${source.url}" target="_blank" class="text-info text-truncate d-inline-block"
+                       style="max-width: 250px;" th:text="${source.url}">URL</a>
+                </td>
+                <td><span class="badge bg-info" th:text="${source.protocol}">RSS</span></td>
+                <td th:text="${source.fetchIntervalMinutes + ' min'}">15 min</td>
+                <td>
+                    <span th:if="${source.lastFetchedAt}"
+                          th:text="${#temporals.format(source.lastFetchedAt, 'yyyy-MM-dd HH:mm')}">
+                        Never
+                    </span>
+                    <span th:unless="${source.lastFetchedAt}" class="text-muted">Never</span>
+                </td>
+                <td>
+                    <span class="badge bg-dark border border-secondary"
+                          th:text="${articleCounts[source.id]}">0</span>
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" title="Edit"
+                                th:data-id="${source.id}"
+                                th:data-name="${source.name}"
+                                th:data-url="${source.url}"
+                                th:data-protocol="${source.protocol}"
+                                th:data-interval="${source.fetchIntervalMinutes}"
+                                onclick="editFeed(this)">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <form th:action="@{/feeds/{id}/fetch(id=${source.id})}" method="post"
+                              class="d-inline">
+                            <button type="submit" class="btn btn-outline-warning" title="Fetch Now">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </form>
+                        <button class="btn btn-outline-danger" title="Delete"
+                                th:data-name="${source.name}"
+                                th:data-id="${source.id}"
+                                onclick="confirmDelete(this)">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            <tr th:if="${#lists.isEmpty(sources)}">
+                <td colspan="8" class="text-center text-muted py-4">
+                    No feed sources configured. Click "Add Source" to get started.
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="feedModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="feedModalTitle">Add Feed Source</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="feedForm" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="feedName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="feedName" name="name"
+                               placeholder="e.g. BBC News" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="feedUrl" class="form-label">RSS URL</label>
+                        <input type="url" class="form-control" id="feedUrl" name="url"
+                               placeholder="https://example.com/rss" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="feedProtocol" class="form-label">Protocol</label>
+                        <select class="form-select" id="feedProtocol" name="protocol">
+                            <option value="RSS">RSS</option>
+                            <option value="ATOM">ATOM</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="feedInterval" class="form-label">Fetch Interval (minutes)</label>
+                        <input type="number" class="form-control" id="feedInterval" name="fetchIntervalMinutes"
+                               value="15" min="1" max="1440" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="feedSubmitBtn">Add</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<form id="deleteForm" method="post" style="display:none;">
+    <input type="hidden" name="_method" value="DELETE">
+</form>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function resetForm() {
+        document.getElementById('feedModalTitle').textContent = 'Add Feed Source';
+        document.getElementById('feedSubmitBtn').textContent = 'Add';
+        document.getElementById('feedForm').action = '/feeds';
+        document.getElementById('feedForm').method = 'post';
+        document.getElementById('feedName').value = '';
+        document.getElementById('feedUrl').value = '';
+        document.getElementById('feedProtocol').value = 'RSS';
+        document.getElementById('feedInterval').value = '15';
+    }
+
+    function editFeed(btn) {
+        document.getElementById('feedModalTitle').textContent = 'Edit Feed Source';
+        document.getElementById('feedSubmitBtn').textContent = 'Update';
+        document.getElementById('feedForm').action = '/feeds/' + btn.dataset.id;
+        document.getElementById('feedForm').method = 'post';
+
+        var methodInput = document.getElementById('_methodInput');
+        if (!methodInput) {
+            methodInput = document.createElement('input');
+            methodInput.type = 'hidden';
+            methodInput.name = '_method';
+            methodInput.value = 'PUT';
+            methodInput.id = '_methodInput';
+            document.getElementById('feedForm').appendChild(methodInput);
+        } else {
+            methodInput.value = 'PUT';
+        }
+
+        document.getElementById('feedName').value = btn.dataset.name;
+        document.getElementById('feedUrl').value = btn.dataset.url;
+        document.getElementById('feedProtocol').value = btn.dataset.protocol;
+        document.getElementById('feedInterval').value = btn.dataset.interval;
+
+        var modal = new bootstrap.Modal(document.getElementById('feedModal'));
+        modal.show();
+    }
+
+    function confirmDelete(btn) {
+        if (confirm('Are you sure you want to delete "' + btn.dataset.name + '"? All associated articles will also be deleted.')) {
+            var form = document.getElementById('deleteForm');
+            form.action = '/feeds/' + btn.dataset.id;
+            form.submit();
+        }
+    }
+</script>
+</body>
+</html>
