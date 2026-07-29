@@ -25,7 +25,7 @@ public class SearchController {
                          @RequestParam(value = "sourceId", required = false) Long sourceId,
                          @RequestParam(value = "sort", defaultValue = "newest") String sort,
                          @RequestParam(value = "page", defaultValue = "0") int page,
-                         @RequestParam(value = "size", defaultValue = "20") int size,
+                         @RequestParam(value = "size", defaultValue = "10") int size,
                          Model model) {
 
         Page<Article> articles = articleService.search(keyword, sourceId, page, size, sort);

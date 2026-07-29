@@ -16,12 +16,16 @@ spring:
     cache: false
 
 server:
-  port: 8080
+  port: 8891
 
 newsfeed:
   fetch:
     default-interval-minutes: 15
     max-articles-per-feed: 500
+  retention:
+    days: 30
+  backup:
+    dir: ./data/backups
 
 app:
   security:

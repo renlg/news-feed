@@ -4,6 +4,8 @@ import com.newsfeed.model.FeedSource;
 import com.newsfeed.repository.ArticleRepository;
 import com.newsfeed.repository.FeedSourceRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,10 @@ public class FeedSourceService {
 
     public List<FeedSource> findAll() {
         return feedSourceRepository.findAll();
+    }
+
+    public Page<FeedSource> findAll(Pageable pageable) {
+        return feedSourceRepository.findAll(pageable);
     }
 
     public Optional<FeedSource> findById(Long id) {

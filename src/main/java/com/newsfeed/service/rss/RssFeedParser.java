@@ -91,6 +91,7 @@ public class RssFeedParser implements FeedParser {
             }
         } catch (Exception e) {
             log.error("Failed to parse feed from {}: {}", url, e.getMessage(), e);
+            throw new RuntimeException("Failed to parse feed from " + url + ": " + e.getMessage(), e);
         }
         return articles;
     }

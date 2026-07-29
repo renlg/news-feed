@@ -22,6 +22,7 @@ public class FeedFetchService {
     private final FeedSourceService feedSourceService;
     private final ArticleService articleService;
     private final List<FeedParser> feedParsers;
+    private final FetchLogService fetchLogService;
 
     @Value("${newsfeed.fetch.max-articles-per-feed:500}")
     private int maxArticlesPerFeed;
@@ -61,20 +62,27 @@ public class FeedFetchService {
 
     @Async("fetchExecutor")
     public void processSource(FeedSource source) {
+        if (!Boolean.TRUE.equals(source.getEnabled())) {
+            log.info("Feed '{}' is disabled, skipping fetch", source.getName());
+            return;
+        }
+        int saved = 0;
         try {
             FeedParser parser = getParser(source.getProtocol());
             List<Article> articles = parser.parse(source.getUrl(), source);
 
             if (!articles.isEmpty()) {
                 int limit = Math.min(articles.size(), maxArticlesPerFeed);
-                int saved = articleService.saveArticles(articles.subList(0, limit));
+                saved = articleService.saveArticles(articles.subList(0, limit));
                 log.info("Feed '{}': parsed {} articles, saved {} new",
                         source.getName(), articles.size(), saved);
             }
 
             feedSourceService.updateLastFetchedAt(source.getId());
+            fetchLogService.logSuccess(source.getId(), source.getName(), saved);
         } catch (Exception e) {
             log.error("Error processing feed '{}': {}", source.getName(), e.getMessage(), e);
+            fetchLogService.logFailure(source.getId(), source.getName(), e.getMessage());
         }
     }
 }

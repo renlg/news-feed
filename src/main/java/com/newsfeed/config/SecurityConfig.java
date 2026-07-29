@@ -30,7 +30,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/css/**", "/js/**", "/login").permitAll()
                 .requestMatchers("/h2-console/**").authenticated()
-                .requestMatchers("/feeds/**", "/api/feeds/**").authenticated()
+                .requestMatchers("/feeds/**", "/api/feeds/**", "/reports/**").authenticated()
                 .anyRequest().permitAll()
             )
             .formLogin(form -> form

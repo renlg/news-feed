@@ -4,6 +4,8 @@ import com.newsfeed.model.FeedSource;
 import com.newsfeed.service.FeedFetchService;
 import com.newsfeed.service.FeedSourceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -22,12 +24,16 @@ public class FeedConfigController {
 
     @GetMapping
     public String listFeeds(Model model,
+                            @RequestParam(value = "page", defaultValue = "0") int page,
+                            @RequestParam(value = "size", defaultValue = "10") int size,
                             @RequestParam(value = "success", required = false) String successMsg,
                             @RequestParam(value = "error", required = false) String errorMsg) {
-        model.addAttribute("sources", feedSourceService.findAll());
+        Page<FeedSource> sourcePage = feedSourceService.findAll(PageRequest.of(page, size));
+        model.addAttribute("sources", sourcePage.getContent());
+        model.addAttribute("sourcePage", sourcePage);
 
         Map<Long, Long> articleCounts = new HashMap<>();
-        for (FeedSource source : feedSourceService.findAll()) {
+        for (FeedSource source : sourcePage.getContent()) {
             articleCounts.put(source.getId(),
                     feedSourceService.countArticlesBySourceId(source.getId()));
         }
@@ -56,12 +62,13 @@ public class FeedConfigController {
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to add feed: " + e.getMessage());
         }
-        return "redirect:/feeds";
+        return "redirect:/feeds?page=0";
     }
 
     @PutMapping("/{id}")
     public String updateFeed(@PathVariable Long id,
                              @ModelAttribute FeedSource source,
+                             @RequestParam(value = "page", defaultValue = "0") int page,
                              RedirectAttributes redirectAttributes) {
         try {
             feedSourceService.findById(id).ifPresent(existing -> {
@@ -69,29 +76,33 @@ public class FeedConfigController {
                 existing.setUrl(source.getUrl());
                 existing.setProtocol(source.getProtocol());
                 existing.setFetchIntervalMinutes(source.getFetchIntervalMinutes());
+                existing.setEnabled(source.getEnabled() != null && source.getEnabled());
                 feedSourceService.save(existing);
             });
             redirectAttributes.addAttribute("success", "Feed source updated successfully");
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to update feed: " + e.getMessage());
         }
-        return "redirect:/feeds";
+        return "redirect:/feeds?page=" + page;
     }
 
     @DeleteMapping("/{id}")
-    public String deleteFeed(@PathVariable Long id, RedirectAttributes redirectAttributes) {
+    public String deleteFeed(@PathVariable Long id,
+                             @RequestParam(value = "page", defaultValue = "0") int page,
+                             RedirectAttributes redirectAttributes) {
         try {
             feedSourceService.delete(id);
             redirectAttributes.addAttribute("success", "Feed source deleted successfully");
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to delete feed: " + e.getMessage());
         }
-        return "redirect:/feeds";
+        return "redirect:/feeds?page=" + page;
     }
 
     @PostMapping("/{id}/toggle")
     public String toggleFeed(@PathVariable Long id,
                              @RequestParam boolean enabled,
+                             @RequestParam(value = "page", defaultValue = "0") int page,
                              RedirectAttributes redirectAttributes) {
         try {
             feedSourceService.toggleEnabled(id, enabled);
@@ -100,17 +111,19 @@ public class FeedConfigController {
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to toggle feed: " + e.getMessage());
         }
-        return "redirect:/feeds";
+        return "redirect:/feeds?page=" + page;
     }
 
     @PostMapping("/{id}/fetch")
-    public String fetchNow(@PathVariable Long id, RedirectAttributes redirectAttributes) {
+    public String fetchNow(@PathVariable Long id,
+                           @RequestParam(value = "page", defaultValue = "0") int page,
+                           RedirectAttributes redirectAttributes) {
         try {
             feedSourceService.findById(id).ifPresent(feedFetchService::processSource);
             redirectAttributes.addAttribute("success", "Fetch triggered for feed source");
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to trigger fetch: " + e.getMessage());
         }
-        return "redirect:/feeds";
+        return "redirect:/feeds?page=" + page;
     }
 }
