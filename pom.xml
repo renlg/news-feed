@@ -85,6 +85,7 @@
     </dependencies>
 
     <build>
+        <finalName>news-feed</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

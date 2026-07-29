@@ -10,4 +10,6 @@ import java.util.List;
 public interface FeedSourceRepository extends JpaRepository<FeedSource, Long> {
 
     List<FeedSource> findByEnabledTrue();
+
+    boolean existsByUrl(String url);
 }
