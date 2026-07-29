@@ -17,6 +17,11 @@
         <div class="navbar-nav ms-auto">
             <a class="nav-link active" href="/feeds">Sources</a>
             <a class="nav-link" href="/search">Search</a>
+            <form th:action="@{/logout}" method="post" class="d-inline">
+                <button type="submit" class="btn btn-link nav-link">
+                    <i class="bi bi-box-arrow-right me-1"></i>Logout
+                </button>
+            </form>
         </div>
     </div>
 </nav>

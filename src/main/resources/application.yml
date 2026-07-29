@@ -22,3 +22,8 @@ newsfeed:
   fetch:
     default-interval-minutes: 15
     max-articles-per-feed: 500
+
+app:
+  security:
+    username: admin
+    password: admin123
