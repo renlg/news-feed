@@ -99,6 +99,19 @@ body {
     border: 1px solid #495057;
 }
 
+.tag-picker-trigger {
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.tag-picker-trigger:hover {
+    border-color: #6c757d;
+}
+
+.tag-picker-trigger[aria-expanded="true"] {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
 .alert {
     border: none;
 }

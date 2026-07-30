@@ -51,20 +51,16 @@
     <form method="get" action="/feeds" class="row g-2 mb-3 align-items-end" onsubmit="return filterFormSubmit(this)">
         <div class="col-auto">
             <label class="form-label form-label-sm mb-0">Tags</label>
-            <div id="filterTagPicker" style="min-width: 260px;">
-                <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                        选择标签
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-dark p-2"
+            <div id="filterTagPicker" class="dropdown" style="min-width: 260px;">
+                    <div class="tag-picker-trigger d-flex flex-wrap align-items-center gap-1 p-2 border border-secondary rounded"
+                         data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                         style="min-height: 38px; cursor: pointer; background-color: var(--bs-body-bg);">
+                        <small class="text-muted tag-placeholder">未选择标签</small>
+                        <i class="bi bi-chevron-down ms-auto text-muted" style="font-size: 0.75rem;"></i>
+                    </div>
+                    <ul class="dropdown-menu dropdown-menu-dark w-100 p-2"
                         style="max-height: 300px; overflow-y: auto;"></ul>
                 </div>
-                <div class="border border-secondary rounded p-2 mt-1 d-flex flex-wrap"
-                     style="min-height: 38px; background-color: rgba(255,255,255,0.02);">
-                    <small class="text-muted tag-placeholder">未选择标签</small>
-                </div>
-            </div>
         </div>
         <div class="col-auto">
             <label for="filterEnabled" class="form-label form-label-sm mb-0">Status</label>
@@ -270,19 +266,15 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Tags</label>
-                        <div id="modalTagPicker">
-                            <div class="dropdown">
-                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                        data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                                    选择标签
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-dark p-2"
-                                    style="max-height: 300px; overflow-y: auto;"></ul>
-                            </div>
-                            <div class="border border-secondary rounded p-2 mt-1 d-flex flex-wrap"
-                                 style="min-height: 38px; background-color: rgba(255,255,255,0.02);">
+                        <div id="modalTagPicker" class="dropdown">
+                            <div class="tag-picker-trigger d-flex flex-wrap align-items-center gap-1 p-2 border border-secondary rounded"
+                                 data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                 style="min-height: 38px; cursor: pointer; background-color: var(--bs-body-bg);">
                                 <small class="text-muted tag-placeholder">未选择标签</small>
+                                <i class="bi bi-chevron-down ms-auto text-muted" style="font-size: 0.75rem;"></i>
                             </div>
+                            <ul class="dropdown-menu dropdown-menu-dark w-100 p-2"
+                                style="max-height: 300px; overflow-y: auto;"></ul>
                         </div>
                         <input type="hidden" name="tagIds" id="modalTagPickerHidden" value="">
                     </div>
@@ -321,7 +313,6 @@
     function initTagPicker(containerId, tags, selectedIds) {
         var container = document.getElementById(containerId);
         var menu = container.querySelector('.dropdown-menu');
-        var display = container.querySelector('.border.d-flex');
         selectedIds = (selectedIds || []).map(function(s) { return String(s); });
 
         menu.innerHTML = '';
@@ -344,7 +335,7 @@
                     input.checked = true;
                 }
                 var label = document.createElement('label');
-                label.className = 'form-check-label';
+                label.className = 'form-check-label d-flex align-items-center gap-2';
                 label.htmlFor = inputId;
                 label.innerHTML = '<span class="badge" style="background-color:' + tag.color + '">'
                     + tag.name + '</span>';
@@ -359,35 +350,49 @@
     }
 
     function syncTagPicker(container, tags) {
-        var display = container.querySelector('.border.d-flex');
+        var trigger = container.querySelector('.tag-picker-trigger');
         var checked = container.querySelectorAll('.form-check-input:checked');
         var selectedIds = [];
-        display.innerHTML = '';
-        if (checked.length === 0) {
-            display.innerHTML = '<small class="text-muted tag-placeholder">未选择标签</small>';
+
+        var badges = [];
+        checked.forEach(function(cb) {
+            var tagId = cb.value;
+            selectedIds.push(tagId);
+            var tag = null;
+            for (var i = 0; i < tags.length; i++) {
+                if (String(tags[i].id) === String(tagId)) { tag = tags[i]; break; }
+            }
+            var name = tag ? tag.name : tagId;
+            var color = tag ? tag.color : '#6c757d';
+            badges.push({ id: tagId, name: name, color: color, cb: cb });
+        });
+
+        trigger.innerHTML = '';
+        if (badges.length === 0) {
+            var placeholder = document.createElement('small');
+            placeholder.className = 'text-muted tag-placeholder';
+            placeholder.textContent = '未选择标签';
+            trigger.appendChild(placeholder);
         } else {
-            checked.forEach(function(cb) {
-                var tagId = cb.value;
-                selectedIds.push(tagId);
-                var tag = null;
-                for (var i = 0; i < tags.length; i++) {
-                    if (String(tags[i].id) === String(tagId)) { tag = tags[i]; break; }
-                }
-                var name = tag ? tag.name : tagId;
-                var color = tag ? tag.color : '#6c757d';
+            badges.forEach(function(b) {
                 var badge = document.createElement('span');
-                badge.className = 'badge me-1 mb-1 d-inline-flex align-items-center';
-                badge.style.backgroundColor = color;
-                badge.innerHTML = name + ' <button type="button" class="btn-close btn-close-white ms-1"'
+                badge.className = 'badge d-inline-flex align-items-center';
+                badge.style.backgroundColor = b.color;
+                badge.innerHTML = b.name + ' <button type="button" class="btn-close btn-close-white ms-1"'
                     + ' style="font-size:0.6em;" aria-label="Remove"></button>';
                 badge.querySelector('button').addEventListener('click', function(e) {
                     e.stopPropagation();
-                    cb.checked = false;
+                    b.cb.checked = false;
                     syncTagPicker(container, tags);
                 });
-                display.appendChild(badge);
+                trigger.appendChild(badge);
             });
         }
+        var chevron = document.createElement('i');
+        chevron.className = 'bi bi-chevron-down ms-auto text-muted';
+        chevron.style.fontSize = '0.75rem';
+        trigger.appendChild(chevron);
+
         var hidden = container.querySelector('input[type="hidden"]');
         if (hidden) {
             hidden.value = selectedIds.join(',');
