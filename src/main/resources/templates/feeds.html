@@ -149,6 +149,7 @@
                                 th:data-protocol="${source.protocol}"
                                 th:data-interval="${source.fetchIntervalMinutes}"
                                 th:data-enabled="${source.enabled}"
+                                th:data-ai-categorize="${source.aiCategorize}"
                                 th:data-page="${sourcePage.number}"
                                 th:data-tag-ids="${source.tags != null ? #strings.listJoin(source.tags.![id], ',') : ''}"
                                 onclick="editFeed(this)">
@@ -291,6 +292,12 @@
                             <label class="form-check-label" for="feedEnabled">Enabled</label>
                         </div>
                     </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="feedAiCategorize" name="aiCategorize" value="true">
+                            <label class="form-check-label" for="feedAiCategorize">AI自动分类</label>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer border-secondary">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -425,6 +432,7 @@
         document.getElementById('feedProtocol').value = 'RSS';
         document.getElementById('feedInterval').value = '15';
         document.getElementById('feedEnabled').checked = true;
+        document.getElementById('feedAiCategorize').checked = false;
         var methodInput = document.getElementById('_methodInput');
         if (methodInput) methodInput.remove();
         initTagPicker('modalTagPicker', allTags, []);
@@ -455,6 +463,7 @@
         document.getElementById('feedProtocol').value = btn.dataset.protocol;
         document.getElementById('feedInterval').value = btn.dataset.interval;
         document.getElementById('feedEnabled').checked = btn.dataset.enabled === 'true';
+        document.getElementById('feedAiCategorize').checked = btn.dataset.aiCategorize === 'true';
 
         var tagIds = (btn.dataset.tagIds || '').split(',').filter(function(s) { return s.trim() !== ''; });
         initTagPicker('modalTagPicker', allTags, tagIds);

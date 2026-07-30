@@ -35,3 +35,8 @@ app:
   security:
     username: admin
     password: admin123
+
+ai:
+  api:
+    base-url: ${AI_API_BASE_URL:}
+    key: ${AI_API_KEY:}

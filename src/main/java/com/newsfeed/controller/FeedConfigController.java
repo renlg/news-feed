@@ -73,6 +73,9 @@ public class FeedConfigController {
             if (source.getEnabled() == null) {
                 source.setEnabled(true);
             }
+            if (source.getAiCategorize() == null) {
+                source.setAiCategorize(false);
+            }
             if (tagIds != null && !tagIds.isEmpty()) {
                 Set<Tag> tags = new HashSet<>();
                 for (Long tid : tagIds) {
@@ -104,6 +107,7 @@ public class FeedConfigController {
                 existing.setProtocol(source.getProtocol());
                 existing.setFetchIntervalMinutes(source.getFetchIntervalMinutes());
                 existing.setEnabled(source.getEnabled() != null && source.getEnabled());
+                existing.setAiCategorize(source.getAiCategorize() != null && source.getAiCategorize());
                 if (tagIds != null && !tagIds.isEmpty()) {
                     Set<Tag> tags = new HashSet<>();
                     for (Long tid : tagIds) {

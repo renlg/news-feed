@@ -43,6 +43,9 @@ public class FeedSource {
     @Column(nullable = false)
     private Boolean enabled = true;
 
+    @Column(nullable = false)
+    private Boolean aiCategorize = false;
+
     private LocalDateTime lastFetchedAt;
 
     @Column(nullable = false, updatable = false)

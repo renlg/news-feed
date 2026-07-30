@@ -2,11 +2,13 @@ package com.newsfeed.service.rss;
 
 import com.newsfeed.model.Article;
 import com.newsfeed.model.FeedSource;
+import com.newsfeed.service.AiCategoryService;
 import com.newsfeed.service.FeedParser;
 import com.rometools.rome.feed.synd.SyndEntry;
 import com.rometools.rome.feed.synd.SyndFeed;
 import com.rometools.rome.io.SyndFeedInput;
 import com.rometools.rome.io.XmlReader;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jdom2.Document;
 import org.jdom2.input.SAXBuilder;
@@ -26,7 +28,10 @@ import java.util.List;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class RssFeedParser implements FeedParser {
+
+    private final AiCategoryService aiCategoryService;
 
     @Override
     public String supportedProtocol() {
@@ -106,6 +111,14 @@ public class RssFeedParser implements FeedParser {
                             .orElse("");
                     if (!categories.isEmpty()) {
                         article.setCategory(categories);
+                    }
+                }
+
+                if (Boolean.TRUE.equals(source.getAiCategorize())
+                        && (article.getCategory() == null || article.getCategory().isBlank())) {
+                    String aiCategory = aiCategoryService.categorize(summary, content);
+                    if (aiCategory != null && !aiCategory.isBlank()) {
+                        article.setCategory(aiCategory);
                     }
                 }
 

@@ -5,3 +5,4 @@ data/
 *.mv.db
 *.trace.db
 test_feeds.sh
+src/main/resources/application.properties
