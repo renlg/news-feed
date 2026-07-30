@@ -307,7 +307,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script th:inline="javascript">
     var allTags = [[${tags}]];
-    var selectedFilterTagIds = [[${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}]].toString().split(',').filter(function(s) { return s.trim() !== ''; });
+    var selectedFilterTagIds = [[${tagIds}]] || [];
 </script>
 <script>
     function initTagPicker(containerId, tags, selectedIds) {
