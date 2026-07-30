@@ -51,9 +51,7 @@
     <form method="get" action="/feeds" class="row g-2 mb-3 align-items-end" onsubmit="return filterFormSubmit(this)">
         <div class="col-auto">
             <label class="form-label form-label-sm mb-0">Tags</label>
-            <div id="filterTagPicker" class="dropdown"
-                 th:attr="data-initial-tag-ids=${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}"
-                 style="min-width: 260px;">
+            <div id="filterTagPicker" class="dropdown" style="min-width: 260px;">
                     <div class="tag-picker-trigger d-flex flex-wrap align-items-center gap-1 p-2 border border-secondary rounded"
                          data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
                          style="min-height: 38px; cursor: pointer; background-color: var(--bs-body-bg);">
@@ -62,6 +60,8 @@
                     </div>
                     <ul class="dropdown-menu dropdown-menu-dark w-100 p-2"
                         style="max-height: 300px; overflow-y: auto;"></ul>
+                    <input type="hidden" name="tagIds" id="filterTagPickerHidden"
+                           th:value="${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}">
                 </div>
         </div>
         <div class="col-auto">
@@ -277,8 +277,8 @@
                             </div>
                             <ul class="dropdown-menu dropdown-menu-dark w-100 p-2"
                                 style="max-height: 300px; overflow-y: auto;"></ul>
+                            <input type="hidden" name="tagIds" id="modalTagPickerHidden" value="">
                         </div>
-                        <input type="hidden" name="tagIds" id="modalTagPickerHidden" value="">
                     </div>
                     <div class="mb-3">
                         <label for="feedInterval" class="form-label">Fetch Interval (minutes)</label>
@@ -329,6 +329,7 @@
                 var input = document.createElement('input');
                 input.className = 'form-check-input filter-tag-check';
                 input.type = 'checkbox';
+                input.name = 'tagIds';
                 input.value = tag.id;
                 var inputId = containerId + '_tag_' + tag.id;
                 input.id = inputId;
@@ -462,24 +463,27 @@
         modal.show();
     }
 
-    document.getElementById('feedsPageJumpBtn').addEventListener('click', function() {
-        var input = document.getElementById('feedsPageJump');
-        var p = parseInt(input.value);
-        var total = parseInt(this.dataset.total);
-        if (p >= 1 && p <= total) {
-            var params = 'page=' + (p - 1);
-            var tagIds = this.dataset.tagids;
-            var enabled = this.dataset.enabled;
-            if (tagIds) {
-                var ids = tagIds.split(',');
-                ids.forEach(function(id) {
-                    if (id.trim()) params += '&tagIds=' + id.trim();
-                });
+    var jumpBtn = document.getElementById('feedsPageJumpBtn');
+    if (jumpBtn) {
+        jumpBtn.addEventListener('click', function() {
+            var input = document.getElementById('feedsPageJump');
+            var p = parseInt(input.value);
+            var total = parseInt(this.dataset.total);
+            if (p >= 1 && p <= total) {
+                var params = 'page=' + (p - 1);
+                var tagIds = this.dataset.tagids;
+                var enabled = this.dataset.enabled;
+                if (tagIds) {
+                    var ids = tagIds.split(',');
+                    ids.forEach(function(id) {
+                        if (id.trim()) params += '&tagIds=' + id.trim();
+                    });
+                }
+                if (enabled) params += '&enabled=' + enabled;
+                window.location.href = '/feeds?' + params;
             }
-            if (enabled) params += '&enabled=' + enabled;
-            window.location.href = '/feeds?' + params;
-        }
-    });
+        });
+    }
 
     function confirmDelete(btn) {
         if (confirm('Are you sure you want to delete "' + btn.dataset.name + '"? All associated articles will also be deleted.')) {
@@ -501,8 +505,10 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        var container = document.getElementById('filterTagPicker');
-        var initialTagIds = (container.dataset.initialTagIds || '').split(',').filter(function(s) { return s.trim() !== ''; });
+        var filterHidden = document.getElementById('filterTagPickerHidden');
+        var initialTagIds = filterHidden && filterHidden.value
+            ? filterHidden.value.split(',').filter(function(s) { return s.trim() !== ''; })
+            : [];
         initTagPicker('filterTagPicker', allTags, initialTagIds);
         initTagPicker('modalTagPicker', allTags, []);
     });
