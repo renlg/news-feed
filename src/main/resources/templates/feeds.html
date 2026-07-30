@@ -51,7 +51,9 @@
     <form method="get" action="/feeds" class="row g-2 mb-3 align-items-end" onsubmit="return filterFormSubmit(this)">
         <div class="col-auto">
             <label class="form-label form-label-sm mb-0">Tags</label>
-            <div id="filterTagPicker" class="dropdown" style="min-width: 260px;">
+            <div id="filterTagPicker" class="dropdown"
+                 th:attr="data-initial-tag-ids=${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}"
+                 style="min-width: 260px;">
                     <div class="tag-picker-trigger d-flex flex-wrap align-items-center gap-1 p-2 border border-secondary rounded"
                          data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
                          style="min-height: 38px; cursor: pointer; background-color: var(--bs-body-bg);">
@@ -307,7 +309,6 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script th:inline="javascript">
     var allTags = [[${tags}]];
-    var selectedFilterTagIds = [[${tagIds}]] || [];
 </script>
 <script>
     function initTagPicker(containerId, tags, selectedIds) {
@@ -500,7 +501,9 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        initTagPicker('filterTagPicker', allTags, selectedFilterTagIds);
+        var container = document.getElementById('filterTagPicker');
+        var initialTagIds = (container.dataset.initialTagIds || '').split(',').filter(function(s) { return s.trim() !== ''; });
+        initTagPicker('filterTagPicker', allTags, initialTagIds);
         initTagPicker('modalTagPicker', allTags, []);
     });
 </script>
