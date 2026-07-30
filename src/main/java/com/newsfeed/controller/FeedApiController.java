@@ -2,6 +2,7 @@ package com.newsfeed.controller;
 
 import com.newsfeed.model.Article;
 import com.newsfeed.model.FeedSource;
+import com.newsfeed.service.ArticleAiService;
 import com.newsfeed.service.ArticleService;
 import com.newsfeed.service.FeedFetchService;
 import com.newsfeed.service.FeedSourceService;
@@ -20,6 +21,7 @@ public class FeedApiController {
     private final FeedSourceService feedSourceService;
     private final ArticleService articleService;
     private final FeedFetchService feedFetchService;
+    private final ArticleAiService articleAiService;
 
     @GetMapping
     public ResponseEntity<?> listFeeds() {
@@ -81,5 +83,31 @@ public class FeedApiController {
 
         Page<Article> articles = articleService.search(keyword, sourceId, category, page, size, sort);
         return ResponseEntity.ok(articles);
+    }
+
+    @PostMapping("/ai/process")
+    public ResponseEntity<?> triggerAiProcessing() {
+        int count = articleAiService.triggerProcessing();
+        if (count == 0) {
+            return ResponseEntity.ok(Map.of("message", "没有待处理的文章"));
+        }
+        return ResponseEntity.ok(Map.of("message", "已触发AI处理", "count", count));
+    }
+
+    @GetMapping("/ai/stats")
+    public ResponseEntity<?> getAiStats() {
+        return ResponseEntity.ok(articleAiService.getStats());
+    }
+
+    @PostMapping("/ai/reset")
+    public ResponseEntity<?> resetAiProcessing() {
+        int count = articleAiService.resetTodayProcessing();
+        return ResponseEntity.ok(Map.of("message", "已重置AI处理状态", "count", count));
+    }
+
+    @PostMapping("/ai/enable-all")
+    public ResponseEntity<?> enableAiCategorizeForAll() {
+        int count = feedSourceService.enableAiCategorizeForAll();
+        return ResponseEntity.ok(Map.of("message", "已启用AI分类", "count", count));
     }
 }

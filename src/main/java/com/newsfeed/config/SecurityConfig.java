@@ -30,7 +30,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/css/**", "/js/**", "/login").permitAll()
                 .requestMatchers("/h2-console/**").authenticated()
-                .requestMatchers("/feeds/**", "/api/feeds/**", "/reports/**", "/tags/**").authenticated()
+                .requestMatchers("/feeds/**", "/api/feeds/**", "/reports/**", "/tags/**", "/digest/**").authenticated()
                 .anyRequest().permitAll()
             )
             .formLogin(form -> form
@@ -48,7 +48,7 @@ public class SecurityConfig {
             )
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                .ignoringRequestMatchers("/h2-console/**")
+                .ignoringRequestMatchers("/h2-console/**", "/api/feeds/ai/**")
             );
 
         return http.build();

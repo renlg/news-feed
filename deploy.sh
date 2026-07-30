@@ -34,6 +34,7 @@ sleep 1"
 
 echo "=== 4. 启动服务 ==="
 ssh "${SERVER}" "export JAVA_HOME=/usr/local/jdk17 && \
+source ${DEPLOY_DIR}/env.sh && \
 nohup \${JAVA_HOME}/bin/java -jar ${DEPLOY_DIR}/${JAR_NAME} \
     --server.port=${PORT} \
     --spring.datasource.url=jdbc:h2:file:${DEPLOY_DIR}/data/newsfeed \

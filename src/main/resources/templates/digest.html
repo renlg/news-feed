@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日新闻摘要 - NewsFeed</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <style>
+        .digest-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .digest-header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+        }
+        .digest-header h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+        .digest-date {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+        .digest-nav {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .digest-nav a {
+            padding: 8px 16px;
+            background: #f0f0f0;
+            border-radius: 20px;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.3s;
+        }
+        .digest-nav a:hover, .digest-nav a.active {
+            background: #667eea;
+            color: white;
+        }
+        .category-section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .category-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .category-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+        }
+        .category-icon.ai { background: #e3f2fd; }
+        .category-icon.tech { background: #f3e5f5; }
+        .category-icon.domestic { background: #fff3e0; }
+        .category-icon.japan { background: #e8f5e9; }
+        .category-icon.international { background: #fce4ec; }
+        .category-title h2 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .article-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .article-item {
+            padding: 15px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .article-item:last-child {
+            border-bottom: none;
+        }
+        .article-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .article-title a {
+            color: #333;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        .article-title a:hover {
+            color: #667eea;
+        }
+        .article-summary {
+            color: #666;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+        .no-digest {
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .no-digest h2 {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .no-digest p {
+            color: #999;
+        }
+        .category-content {
+            line-height: 1.8;
+        }
+        .digest-article-list {
+            padding-left: 28px;
+            margin: 0;
+            counter-reset: item;
+            list-style: none;
+        }
+        .digest-article-list li {
+            margin-bottom: 14px;
+            position: relative;
+            padding-left: 8px;
+            line-height: 1.7;
+        }
+        .digest-article-list li:last-child {
+            margin-bottom: 0;
+        }
+        .digest-article-list li::before {
+            content: counter(item) ".";
+            counter-increment: item;
+            position: absolute;
+            left: -28px;
+            color: #667eea;
+            font-weight: 700;
+            font-size: 1.05em;
+        }
+        .article-summary-text {
+            color: #333;
+            font-size: 0.98em;
+        }
+        .article-source-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+        .article-source-link:hover {
+            text-decoration: underline;
+        }
+        @media (max-width: 768px) {
+            .digest-container {
+                padding: 10px;
+            }
+            .category-section {
+                padding: 15px;
+            }
+            .digest-header h1 {
+                font-size: 1.5em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <a th:href="@{/feeds}">订阅源</a>
+            <a th:href="@{/search}">搜索</a>
+            <a th:href="@{/tags}">标签</a>
+            <a th:href="@{/digest}" class="active">每日摘要</a>
+            <a th:href="@{/reports}">报表</a>
+        </nav>
+    </header>
+
+    <div class="digest-container">
+        <div th:if="${successMsg}" class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle me-2"></i><span th:text="${successMsg}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <div th:if="${errorMsg}" class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i><span th:text="${errorMsg}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+
+        <div class="digest-header">
+            <h1>📰 每日新闻摘要</h1>
+            <div class="digest-date" th:if="${digest}" th:text="${digest.digestDate}">2024-01-01</div>
+            <form th:action="@{/digest/generate}" method="post" style="margin-top: 15px;">
+                <button type="submit" class="btn btn-light btn-sm">
+                    <i class="bi bi-arrow-clockwise me-1"></i>立即生成
+                </button>
+            </form>
+        </div>
+
+        <div class="digest-nav" th:if="${!digests.isEmpty()}">
+            <a th:each="d : ${digests}" 
+               th:href="@{/digest/{date}(date=${d.digestDate})}"
+               th:class="${selectedDate != null && selectedDate == d.digestDate} ? 'active' : ''"
+               th:text="${d.digestDate}">2024-01-01</a>
+        </div>
+
+        <div th:if="${digest == null}" class="no-digest">
+            <h2>暂无新闻摘要</h2>
+            <p>每日新闻摘要将在每天早上 9 点自动生成</p>
+            <p>请确保已配置 AI API 密钥以获得最佳分类效果</p>
+        </div>
+
+        <div th:if="${digest != null}">
+            <!-- AI 新闻 -->
+            <div class="category-section">
+                <div class="category-title">
+                    <div class="category-icon ai">🤖</div>
+                    <h2>AI 动态</h2>
+                </div>
+                <div class="category-content" th:utext="${digest.aiCategory}">暂无内容</div>
+            </div>
+
+            <!-- 科技新闻 -->
+            <div class="category-section">
+                <div class="category-title">
+                    <div class="category-icon tech">💻</div>
+                    <h2>科技前沿</h2>
+                </div>
+                <div class="category-content" th:utext="${digest.techCategory}">暂无内容</div>
+            </div>
+
+            <!-- 国内热点 -->
+            <div class="category-section">
+                <div class="category-title">
+                    <div class="category-icon domestic">🇨🇳</div>
+                    <h2>国内热点</h2>
+                </div>
+                <div class="category-content" th:utext="${digest.domesticCategory}">暂无内容</div>
+            </div>
+
+            <!-- 日本新闻 -->
+            <div class="category-section">
+                <div class="category-title">
+                    <div class="category-icon japan">🇯🇵</div>
+                    <h2>日本新闻</h2>
+                </div>
+                <div class="category-content" th:utext="${digest.japanCategory}">暂无内容</div>
+            </div>
+
+            <!-- 国际新闻 -->
+            <div class="category-section">
+                <div class="category-title">
+                    <div class="category-icon international">🌍</div>
+                    <h2>国际要闻</h2>
+                </div>
+                <div class="category-content" th:utext="${digest.internationalCategory}">暂无内容</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>NewsFeed - 新闻聚合阅读器</p>
+    </footer>
+</body>
+</html>

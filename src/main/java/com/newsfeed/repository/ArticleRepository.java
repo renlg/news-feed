@@ -58,4 +58,25 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
 
     @Transactional
     void deleteByPublishedAtBefore(LocalDateTime cutoff);
+
+    @Query("SELECT a FROM Article a WHERE a.fetchedAt >= :since AND a.fetchedAt < :until ORDER BY a.publishedAt DESC")
+    List<Article> findByFetchedAtBetween(@Param("since") LocalDateTime since, @Param("until") LocalDateTime until);
+
+    @Query("SELECT a FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
+    List<Article> findUnprocessedArticles();
+
+    @Query("SELECT a FROM Article a WHERE a.aiCategory = :aiCategory AND a.fetchedAt >= :since ORDER BY a.importanceScore DESC")
+    List<Article> findByAiCategoryAndFetchedAtAfter(@Param("aiCategory") String aiCategory, @Param("since") LocalDateTime since);
+
+    @Query("SELECT a FROM Article a WHERE a.aiCategory = :aiCategory AND a.importanceScore > :minScore AND a.fetchedAt >= :since AND a.fetchedAt < :until ORDER BY a.importanceScore DESC")
+    List<Article> findHighScoringByCategory(@Param("aiCategory") String aiCategory, @Param("minScore") int minScore, @Param("since") LocalDateTime since, @Param("until") LocalDateTime until);
+
+    @Query("SELECT COUNT(a) FROM Article a WHERE a.aiProcessed = true AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
+    long countProcessedFromAiSources();
+
+    @Query("SELECT COUNT(a) FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
+    long countUnprocessedFromAiSources();
+
+    @Query("SELECT COUNT(a) FROM Article a WHERE a.fetchedAt >= :since")
+    long countArticlesSince(@Param("since") LocalDateTime since);
 }

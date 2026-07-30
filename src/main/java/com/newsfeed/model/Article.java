@@ -23,7 +23,7 @@ public class Article {
     @Column(nullable = false)
     private String title;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, columnDefinition = "TEXT")
     private String link;
 
     @Column(columnDefinition = "TEXT")
@@ -36,6 +36,20 @@ public class Article {
 
     @Column(columnDefinition = "TEXT")
     private String category;
+
+    // AI处理字段
+    @Column(name = "ai_category")
+    private String aiCategory;
+
+    @Column(name = "importance_score")
+    private Integer importanceScore;
+
+    @Column(name = "ai_summary", columnDefinition = "TEXT")
+    private String aiSummary;
+
+    @Column(name = "ai_processed")
+    @Builder.Default
+    private Boolean aiProcessed = false;
 
     private LocalDateTime publishedAt;
 

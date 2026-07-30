@@ -50,15 +50,20 @@ public class AiCategoryService {
 
             String modelName = aiConfig.getModel() != null && !aiConfig.getModel().isBlank() ? aiConfig.getModel() : "gpt-4o-mini";
             String jsonBody = """
-                    {"model":"%s","messages":[{"role":"system","content":"%s"},{"role":"user","content":"%s"}],"temperature":0.1,"max_tokens":50}"""
+                    {"model":"%s","messages":[{"role":"system","content":"%s"},{"role":"user","content":"%s"}],"temperature":0.1,"max_tokens":500}"""
                     .formatted(modelName, escapeJson(systemPrompt), escapeJson(userMessage));
 
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(10))
+                    .followRedirects(HttpClient.Redirect.NORMAL)
                     .build();
 
+            String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
+            if (baseUrl.endsWith("/v1")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 3);
+            }
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(aiConfig.getBaseUrl().replaceAll("/+$", "") + "/v1/chat/completions"))
+                    .uri(URI.create(baseUrl + "/v1/chat/completions"))
                     .timeout(Duration.ofSeconds(30))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + aiConfig.getKey())

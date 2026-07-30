@@ -91,4 +91,18 @@ public class FeedSourceService {
     public List<Tag> findAllTags() {
         return tagRepository.findAllByOrderByName();
     }
+
+    @Transactional
+    public int enableAiCategorizeForAll() {
+        List<FeedSource> sources = feedSourceRepository.findAll();
+        int count = 0;
+        for (FeedSource source : sources) {
+            if (!Boolean.TRUE.equals(source.getAiCategorize())) {
+                source.setAiCategorize(true);
+                feedSourceRepository.save(source);
+                count++;
+            }
+        }
+        return count;
+    }
 }
