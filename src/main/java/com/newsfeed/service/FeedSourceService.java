@@ -1,8 +1,10 @@
 package com.newsfeed.service;
 
 import com.newsfeed.model.FeedSource;
+import com.newsfeed.model.Tag;
 import com.newsfeed.repository.ArticleRepository;
 import com.newsfeed.repository.FeedSourceRepository;
+import com.newsfeed.repository.TagRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +20,7 @@ public class FeedSourceService {
 
     private final FeedSourceRepository feedSourceRepository;
     private final ArticleRepository articleRepository;
+    private final TagRepository tagRepository;
 
     public List<FeedSource> findAll() {
         return feedSourceRepository.findAll();
@@ -64,5 +67,29 @@ public class FeedSourceService {
 
     public long countArticlesBySourceId(Long sourceId) {
         return articleRepository.countByFeedSourceId(sourceId);
+    }
+
+    public Page<FeedSource> findAll(String country, Long tagId, Pageable pageable) {
+        return feedSourceRepository.findByFilters(country, tagId, null, pageable);
+    }
+
+    public Page<FeedSource> findAll(String country, Long tagId, Boolean enabled, Pageable pageable) {
+        return feedSourceRepository.findByFilters(country, tagId, enabled, pageable);
+    }
+
+    public List<FeedSource> findAll(String country, Long tagId) {
+        return feedSourceRepository.findByFilters(country, tagId, null);
+    }
+
+    public List<FeedSource> findAll(String country, Long tagId, Boolean enabled) {
+        return feedSourceRepository.findByFilters(country, tagId, enabled);
+    }
+
+    public List<Tag> findAllTags() {
+        return tagRepository.findAllByOrderByName();
+    }
+
+    public List<String> findDistinctCountries() {
+        return feedSourceRepository.findDistinctCountries();
     }
 }

@@ -8,8 +8,11 @@ import com.rometools.rome.feed.synd.SyndFeed;
 import com.rometools.rome.io.SyndFeedInput;
 import com.rometools.rome.io.XmlReader;
 import lombok.extern.slf4j.Slf4j;
+import org.jdom2.Document;
+import org.jdom2.input.SAXBuilder;
 import org.springframework.stereotype.Component;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -46,11 +49,17 @@ public class RssFeedParser implements FeedParser {
                     .GET()
                     .build();
 
-            HttpResponse<java.io.InputStream> response = client.send(request,
+            HttpResponse<InputStream> response = client.send(request,
                     HttpResponse.BodyHandlers.ofInputStream());
 
+            // 使用JDOM2 SAXBuilder直接配置XML解析器，允许DOCTYPE声明
+            SAXBuilder saxBuilder = new SAXBuilder();
+            saxBuilder.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false);
+            saxBuilder.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            Document jdomDoc = saxBuilder.build(new XmlReader(response.body()));
+
             SyndFeedInput input = new SyndFeedInput();
-            SyndFeed feed = input.build(new XmlReader(response.body()));
+            SyndFeed feed = input.build(jdomDoc);
 
             for (SyndEntry entry : feed.getEntries()) {
                 String content = null;
@@ -86,6 +95,16 @@ public class RssFeedParser implements FeedParser {
                         .fetchedAt(LocalDateTime.now())
                         .feedSourceId(source.getId())
                         .build();
+
+                if (entry.getCategories() != null && !entry.getCategories().isEmpty()) {
+                    String categories = entry.getCategories().stream()
+                            .map(c -> c.getName())
+                            .reduce((a, b) -> a + "," + b)
+                            .orElse("");
+                    if (!categories.isEmpty()) {
+                        article.setCategory(categories);
+                    }
+                }
 
                 articles.add(article);
             }

@@ -74,11 +74,12 @@ public class FeedApiController {
     public ResponseEntity<?> searchArticles(
             @RequestParam(value = "q", required = false) String keyword,
             @RequestParam(value = "sourceId", required = false) Long sourceId,
+            @RequestParam(value = "category", required = false) String category,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestParam(value = "sort", defaultValue = "newest") String sort) {
 
-        Page<Article> articles = articleService.search(keyword, sourceId, page, size, sort);
+        Page<Article> articles = articleService.search(keyword, sourceId, category, page, size, sort);
         return ResponseEntity.ok(articles);
     }
 }

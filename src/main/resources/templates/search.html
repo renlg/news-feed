@@ -19,6 +19,7 @@
             <a class="nav-link active" href="/search">Search</a>
             <a class="nav-link" href="/reports">Reports</a>
             <a class="nav-link" href="/reports/backups">Backups</a>
+            <a class="nav-link" href="/tags">Tags</a>
             <form th:action="@{/logout}" method="post" class="d-inline">
                 <button type="submit" class="btn btn-link nav-link">
                     <i class="bi bi-box-arrow-right me-1"></i>Logout
@@ -33,12 +34,12 @@
 
     <form method="get" action="/search" class="mb-4">
         <div class="row g-2 align-items-end">
-            <div class="col-md-5">
+            <div class="col-md-4">
                 <label for="searchInput" class="form-label">Keyword</label>
                 <input type="text" class="form-control" id="searchInput" name="q"
                        th:value="${q}" placeholder="Search articles...">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="sourceFilter" class="form-label">Source</label>
                 <select class="form-select" id="sourceFilter" name="sourceId">
                     <option value="">All Sources</option>
@@ -46,6 +47,18 @@
                             th:value="${source.id}"
                             th:selected="${sourceId != null && sourceId == source.id}"
                             th:text="${source.name}">Source</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="categoryFilter" class="form-label">Category</label>
+                <select class="form-select" id="categoryFilter" name="category">
+                    <option value="">All Categories</option>
+                    <option th:each="cat : ${categories}"
+                            th:value="${cat}"
+                            th:selected="${category != null && category == cat}"
+                            th:text="${cat}">Category</option>
+                    <option value="__NULL__"
+                            th:selected="${category != null && category == '__NULL__'}">其他</option>
                 </select>
             </div>
             <div class="col-md-2">
@@ -98,6 +111,8 @@
                 <small class="text-info">
                     <i class="bi bi-rss me-1"></i>
                     <span th:if="${article.feedSource != null}" th:text="${article.feedSource.name}">Source</span>
+                    <span th:if="${article.category != null}" class="badge bg-secondary ms-2" th:text="${article.category}">Category</span>
+                    <span th:if="${article.category == null}" class="badge bg-secondary ms-2">其他</span>
                 </small>
                 <small th:if="${article.author}" class="text-muted">
                     <i class="bi bi-person me-1"></i><span th:text="${article.author}">Author</span>
@@ -114,13 +129,13 @@
         <nav>
             <ul class="pagination pagination-sm mb-0">
                 <li class="page-item" th:classappend="${articles.first} ? 'disabled'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, sort=${sort}, size=${size}, page=${articles.number - 1})}" aria-label="Previous">
+                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=${articles.number - 1})}" aria-label="Previous">
                         <span aria-hidden="true">&laquo;</span>
                     </a>
                 </li>
                 <li th:if="${articles.totalPages > 1}" class="page-item"
                     th:classappend="${articles.number == 0} ? 'active'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, sort=${sort}, size=${size}, page=0)}">1</a>
+                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=0)}">1</a>
                 </li>
                 <li th:if="${articles.number > 3}" class="page-item disabled">
                     <span class="page-link">…</span>
@@ -128,17 +143,17 @@
                 <li th:each="i : ${#numbers.sequence(articles.number - 1, articles.number + 1)}"
                     th:if="${i > 0 && i < articles.totalPages - 1}"
                     class="page-item" th:classappend="${i == articles.number} ? 'active'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, sort=${sort}, size=${size}, page=${i})}" th:text="${i + 1}">1</a>
+                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=${i})}" th:text="${i + 1}">1</a>
                 </li>
                 <li th:if="${articles.number < articles.totalPages - 4}" class="page-item disabled">
                     <span class="page-link">…</span>
                 </li>
                 <li th:if="${articles.totalPages > 1}" class="page-item"
                     th:classappend="${articles.number == articles.totalPages - 1} ? 'active'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, sort=${sort}, size=${size}, page=${articles.totalPages - 1})}" th:text="${articles.totalPages}">Last</a>
+                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=${articles.totalPages - 1})}" th:text="${articles.totalPages}">Last</a>
                 </li>
                 <li class="page-item" th:classappend="${articles.last} ? 'disabled'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, sort=${sort}, size=${size}, page=${articles.number + 1})}" aria-label="Next">
+                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=${articles.number + 1})}" aria-label="Next">
                         <span aria-hidden="true">&raquo;</span>
                     </a>
                 </li>
@@ -153,6 +168,7 @@
                     th:data-total="${articles.totalPages}"
                     th:data-q="${q}"
                     th:data-source-id="${sourceId}"
+                    th:data-category="${category}"
                     th:data-sort="${sort}"
                     th:data-size="${size}">Go</button>
         </div>
@@ -169,6 +185,7 @@
             var params = new URLSearchParams();
             if (this.dataset.q) params.set('q', this.dataset.q);
             if (this.dataset.sourceId) params.set('sourceId', this.dataset.sourceId);
+            if (this.dataset.category) params.set('category', this.dataset.category);
             if (this.dataset.sort) params.set('sort', this.dataset.sort);
             if (this.dataset.size) params.set('size', this.dataset.size);
             params.set('page', p - 1);

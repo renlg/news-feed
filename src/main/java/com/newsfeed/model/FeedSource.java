@@ -6,6 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Data
 @Entity
@@ -26,6 +28,16 @@ public class FeedSource {
 
     @Column(nullable = false)
     private String protocol = "RSS";
+
+    private String country;
+
+    @ManyToMany
+    @JoinTable(
+            name = "feed_source_tag",
+            joinColumns = @JoinColumn(name = "feed_source_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    private Set<Tag> tags = new HashSet<>();
 
     @Column(nullable = false)
     private Integer fetchIntervalMinutes = 15;

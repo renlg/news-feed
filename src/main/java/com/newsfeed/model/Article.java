@@ -34,6 +34,9 @@ public class Article {
 
     private String author;
 
+    @Column(columnDefinition = "TEXT")
+    private String category;
+
     private LocalDateTime publishedAt;
 
     @Column(nullable = false)

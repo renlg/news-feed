@@ -19,6 +19,7 @@
             <a class="nav-link" href="/search">Search</a>
             <a class="nav-link" href="/reports">Reports</a>
             <a class="nav-link" href="/reports/backups">Backups</a>
+            <a class="nav-link" href="/tags">Tags</a>
             <form th:action="@{/logout}" method="post" class="d-inline">
                 <button type="submit" class="btn btn-link nav-link">
                     <i class="bi bi-box-arrow-right me-1"></i>Logout
@@ -46,6 +47,42 @@
         </button>
     </div>
 
+    <!-- Filter row -->
+    <form method="get" action="/feeds" class="row g-2 mb-3 align-items-end" onsubmit="return filterFormSubmit(this)">
+        <div class="col-auto">
+            <label for="filterCountry" class="form-label form-label-sm mb-0">Country</label>
+            <select class="form-select form-select-sm" id="filterCountry" name="country" style="min-width:140px;">
+                <option value="">All Countries</option>
+                <option th:each="c : ${countries}" th:value="${c}" th:text="${c}"
+                        th:selected="${c == country}"></option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="filterTag" class="form-label form-label-sm mb-0">Tag</label>
+            <select class="form-select form-select-sm" id="filterTag" name="tagId" style="min-width:140px;">
+                <option value="">All Tags</option>
+                <option th:each="tag : ${tags}" th:value="${tag.id}" th:text="${tag.name}"
+                        th:selected="${tag.id == tagId}"></option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="filterEnabled" class="form-label form-label-sm mb-0">Status</label>
+            <select class="form-select form-select-sm" id="filterEnabled" name="enabled" style="min-width:140px;">
+                <option value="">All Status</option>
+                <option value="true" th:selected="${enabled == true}">Active</option>
+                <option value="false" th:selected="${enabled == false}">Disabled</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-search me-1"></i>Search
+            </button>
+            <a href="/feeds" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-lg me-1"></i>Clear
+            </a>
+        </div>
+    </form>
+
     <div class="table-responsive">
         <table class="table table-dark table-striped table-hover align-middle">
             <thead>
@@ -54,6 +91,8 @@
                 <th>Name</th>
                 <th>URL</th>
                 <th>Protocol</th>
+                <th>Country</th>
+                <th>Tags</th>
                 <th>Interval</th>
                 <th>Last Fetched</th>
                 <th>Articles</th>
@@ -64,8 +103,11 @@
             <tr th:each="source : ${sources}">
                 <td>
                     <form th:action="@{/feeds/{id}/toggle(id=${source.id})}" method="post" class="d-inline">
+                        <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
                         <input type="hidden" name="enabled" th:value="${!source.enabled}">
                         <input type="hidden" name="page" th:value="${sourcePage.number}">
+                        <input type="hidden" name="country" th:value="${country}">
+                        <input type="hidden" name="tagId" th:value="${tagId}">
                         <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent">
                             <span th:if="${source.enabled}" class="badge bg-success">
                                 <i class="bi bi-check-circle"></i> Active
@@ -82,6 +124,14 @@
                        style="max-width: 250px;" th:text="${source.url}">URL</a>
                 </td>
                 <td><span class="badge bg-info" th:text="${source.protocol}">RSS</span></td>
+                <td th:text="${source.country} ?: '-'">-</td>
+                <td>
+                    <span th:each="tag : ${source.tags}"
+                          class="badge me-1"
+                          th:style="'background-color:' + ${tag.color}"
+                          th:text="${tag.name}">Tag</span>
+                    <span th:if="${#sets.isEmpty(source.tags)}" class="text-muted">-</span>
+                </td>
                 <td th:text="${source.fetchIntervalMinutes + ' min'}">15 min</td>
                 <td>
                     <span th:if="${source.lastFetchedAt}"
@@ -101,15 +151,20 @@
                                 th:data-name="${source.name}"
                                 th:data-url="${source.url}"
                                 th:data-protocol="${source.protocol}"
+                                th:data-country="${source.country}"
                                 th:data-interval="${source.fetchIntervalMinutes}"
                                 th:data-enabled="${source.enabled}"
                                 th:data-page="${sourcePage.number}"
+                                th:data-tag-ids="${source.tags != null ? #strings.listJoin(source.tags.![id], ',') : ''}"
                                 onclick="editFeed(this)">
                             <i class="bi bi-pencil"></i>
                         </button>
                         <form th:action="@{/feeds/{id}/fetch(id=${source.id})}" method="post"
                               class="d-inline">
                             <input type="hidden" name="page" th:value="${sourcePage.number}">
+                            <input type="hidden" name="country" th:value="${country}">
+                            <input type="hidden" name="tagId" th:value="${tagId}">
+                            <input type="hidden" name="enabled" th:value="${enabled}">
                             <button type="submit" class="btn btn-outline-warning" title="Fetch Now">
                                 <i class="bi bi-arrow-clockwise"></i>
                             </button>
@@ -118,6 +173,9 @@
                                 th:data-name="${source.name}"
                                 th:data-id="${source.id}"
                                 th:data-page="${sourcePage.number}"
+                                th:data-country="${country}"
+                                th:data-tag-id="${tagId}"
+                                th:data-enabled="${enabled}"
                                 onclick="confirmDelete(this)">
                             <i class="bi bi-trash"></i>
                         </button>
@@ -125,7 +183,7 @@
                 </td>
             </tr>
             <tr th:if="${#lists.isEmpty(sources)}">
-                <td colspan="8" class="text-center text-muted py-4">
+                <td colspan="10" class="text-center text-muted py-4">
                     No feed sources configured. Click "Add Source" to get started.
                 </td>
             </tr>
@@ -141,13 +199,13 @@
         <nav>
             <ul class="pagination pagination-sm mb-0">
                 <li class="page-item" th:classappend="${sourcePage.first} ? 'disabled'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number - 1})}" aria-label="Previous">
+                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number - 1}, country=${country}, tagId=${tagId}, enabled=${enabled})}" aria-label="Previous">
                         <span aria-hidden="true">&laquo;</span>
                     </a>
                 </li>
                 <li th:if="${sourcePage.totalPages > 1}" class="page-item"
                     th:classappend="${sourcePage.number == 0} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=0)}">1</a>
+                    <a class="page-link" th:href="@{/feeds(page=0, country=${country}, tagId=${tagId}, enabled=${enabled})}">1</a>
                 </li>
                 <li th:if="${sourcePage.number > 3}" class="page-item disabled">
                     <span class="page-link">…</span>
@@ -155,17 +213,17 @@
                 <li th:each="i : ${#numbers.sequence(sourcePage.number - 1, sourcePage.number + 1)}"
                     th:if="${i > 0 && i < sourcePage.totalPages - 1}"
                     class="page-item" th:classappend="${i == sourcePage.number} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=${i})}" th:text="${i + 1}">1</a>
+                    <a class="page-link" th:href="@{/feeds(page=${i}, country=${country}, tagId=${tagId}, enabled=${enabled})}" th:text="${i + 1}">1</a>
                 </li>
                 <li th:if="${sourcePage.number < sourcePage.totalPages - 4}" class="page-item disabled">
                     <span class="page-link">…</span>
                 </li>
                 <li th:if="${sourcePage.totalPages > 1}" class="page-item"
                     th:classappend="${sourcePage.number == sourcePage.totalPages - 1} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.totalPages - 1})}" th:text="${sourcePage.totalPages}">Last</a>
+                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.totalPages - 1}, country=${country}, tagId=${tagId}, enabled=${enabled})}" th:text="${sourcePage.totalPages}">Last</a>
                 </li>
                 <li class="page-item" th:classappend="${sourcePage.last} ? 'disabled'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number + 1})}" aria-label="Next">
+                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number + 1}, country=${country}, tagId=${tagId}, enabled=${enabled})}" aria-label="Next">
                         <span aria-hidden="true">&raquo;</span>
                     </a>
                 </li>
@@ -177,10 +235,14 @@
                    style="width: 60px;" placeholder="Page"
                    onkeydown="if(event.key==='Enter')document.getElementById('feedsPageJumpBtn').click()">
             <button class="btn btn-sm btn-outline-secondary" id="feedsPageJumpBtn"
-                    th:data-total="${sourcePage.totalPages}">Go</button>
+                    th:data-total="${sourcePage.totalPages}"
+                    th:data-country="${country}"
+                    th:data-tagid="${tagId}"
+                    th:data-enabled="${enabled}">Go</button>
         </div>
     </div>
 
+<!-- Feed Modal -->
 <div class="modal fade" id="feedModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content bg-dark">
@@ -190,6 +252,10 @@
             </div>
             <form id="feedForm" method="post">
                 <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
+                <input type="hidden" name="page" id="feedPage" value="0">
+                <input type="hidden" name="country" id="feedCountryParam" th:value="${country}">
+                <input type="hidden" name="tagId" id="feedTagIdParam" th:value="${tagId}">
+                <input type="hidden" name="filterEnabled" id="feedFilterEnabledParam" th:value="${enabled}">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="feedName" class="form-label">Name</label>
@@ -207,6 +273,28 @@
                             <option value="RSS">RSS</option>
                             <option value="ATOM">ATOM</option>
                         </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="feedCountry" class="form-label">Country</label>
+                        <input type="text" class="form-control" id="feedCountry" name="country"
+                               placeholder="e.g. China, US, Japan">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tags</label>
+                        <div id="feedTagsContainer" class="border border-secondary rounded p-2"
+                             style="max-height: 150px; overflow-y: auto;">
+                            <div th:each="tag : ${tags}" class="form-check">
+                                <input class="form-check-input" type="checkbox" name="tagIds"
+                                       th:value="${tag.id}" th:id="'tagCheck_' + ${tag.id}">
+                                <label class="form-check-label" th:for="'tagCheck_' + ${tag.id}">
+                                    <span class="badge me-1" th:style="'background-color:' + ${tag.color}"
+                                          th:text="${tag.name}">Tag</span>
+                                </label>
+                            </div>
+                            <div th:if="${#lists.isEmpty(tags)}" class="text-muted small">
+                                No tags available. <a href="/tags">Create tags</a> first.
+                            </div>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label for="feedInterval" class="form-label">Fetch Interval (minutes)</label>
@@ -236,6 +324,16 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    function filterFormSubmit(form) {
+        var controls = form.querySelectorAll('select, input');
+        controls.forEach(function(ctrl) {
+            if (ctrl.value === '' && ctrl.name) {
+                ctrl.disabled = true;
+            }
+        });
+        return true;
+    }
+
     function resetForm() {
         document.getElementById('feedModalTitle').textContent = 'Add Feed Source';
         document.getElementById('feedSubmitBtn').textContent = 'Add';
@@ -244,15 +342,22 @@
         document.getElementById('feedName').value = '';
         document.getElementById('feedUrl').value = '';
         document.getElementById('feedProtocol').value = 'RSS';
+        document.getElementById('feedCountry').value = '';
         document.getElementById('feedInterval').value = '15';
         document.getElementById('feedEnabled').checked = true;
+        var methodInput = document.getElementById('_methodInput');
+        if (methodInput) methodInput.remove();
+        var checkboxes = document.querySelectorAll('#feedTagsContainer input[type="checkbox"]');
+        checkboxes.forEach(function(cb) { cb.checked = false; });
     }
 
     function editFeed(btn) {
         document.getElementById('feedModalTitle').textContent = 'Edit Feed Source';
         document.getElementById('feedSubmitBtn').textContent = 'Update';
-        document.getElementById('feedForm').action = '/feeds/' + btn.dataset.id + '?page=' + (btn.dataset.page || 0);
+        var page = btn.dataset.page || 0;
+        document.getElementById('feedForm').action = '/feeds/' + btn.dataset.id + '?page=' + page;
         document.getElementById('feedForm').method = 'post';
+        document.getElementById('feedPage').value = page;
 
         var methodInput = document.getElementById('_methodInput');
         if (!methodInput) {
@@ -269,8 +374,15 @@
         document.getElementById('feedName').value = btn.dataset.name;
         document.getElementById('feedUrl').value = btn.dataset.url;
         document.getElementById('feedProtocol').value = btn.dataset.protocol;
+        document.getElementById('feedCountry').value = btn.dataset.country || '';
         document.getElementById('feedInterval').value = btn.dataset.interval;
         document.getElementById('feedEnabled').checked = btn.dataset.enabled === 'true';
+
+        var tagIds = (btn.dataset.tagIds || '').split(',').filter(function(s) { return s.trim() !== ''; });
+        var checkboxes = document.querySelectorAll('#feedTagsContainer input[type="checkbox"]');
+        checkboxes.forEach(function(cb) {
+            cb.checked = tagIds.indexOf(cb.value) !== -1;
+        });
 
         var modal = new bootstrap.Modal(document.getElementById('feedModal'));
         modal.show();
@@ -281,7 +393,14 @@
         var p = parseInt(input.value);
         var total = parseInt(this.dataset.total);
         if (p >= 1 && p <= total) {
-            window.location.href = '/feeds?page=' + (p - 1);
+            var params = 'page=' + (p - 1);
+            var country = this.dataset.country;
+            var tagId = this.dataset.tagid;
+            var enabled = this.dataset.enabled;
+            if (country) params += '&country=' + encodeURIComponent(country);
+            if (tagId) params += '&tagId=' + tagId;
+            if (enabled) params += '&enabled=' + enabled;
+            window.location.href = '/feeds?' + params;
         }
     });
 
@@ -289,7 +408,14 @@
         if (confirm('Are you sure you want to delete "' + btn.dataset.name + '"? All associated articles will also be deleted.')) {
             var form = document.getElementById('deleteForm');
             var page = btn.dataset.page || 0;
-            form.action = '/feeds/' + btn.dataset.id + '?page=' + page;
+            var action = '/feeds/' + btn.dataset.id + '?page=' + page;
+            var country = btn.dataset.country;
+            var tagId = btn.dataset.tagId;
+            var enabled = btn.dataset.enabled;
+            if (country) action += '&country=' + encodeURIComponent(country);
+            if (tagId) action += '&tagId=' + tagId;
+            if (enabled) action += '&enabled=' + enabled;
+            form.action = action;
             form.submit();
         }
     }

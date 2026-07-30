@@ -31,7 +31,7 @@ public class ArticleService {
         return saved;
     }
 
-    public Page<Article> search(String keyword, Long sourceId, int page, int size, String sort) {
+    public Page<Article> search(String keyword, Long sourceId, String category, int page, int size, String sort) {
         Sort sortObj;
         if ("oldest".equals(sort)) {
             sortObj = Sort.by(Sort.Direction.ASC, "publishedAt");
@@ -42,6 +42,10 @@ public class ArticleService {
         }
 
         Pageable pageable = PageRequest.of(page, size, sortObj);
-        return articleRepository.search(keyword, sourceId, pageable);
+        return articleRepository.search(keyword, sourceId, category, pageable);
+    }
+
+    public List<String> getCategories() {
+        return articleRepository.findDistinctCategories();
     }
 }

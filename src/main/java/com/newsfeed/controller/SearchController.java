@@ -23,16 +23,23 @@ public class SearchController {
     @GetMapping
     public String search(@RequestParam(value = "q", required = false) String keyword,
                          @RequestParam(value = "sourceId", required = false) Long sourceId,
+                         @RequestParam(value = "category", required = false) String category,
                          @RequestParam(value = "sort", defaultValue = "newest") String sort,
                          @RequestParam(value = "page", defaultValue = "0") int page,
                          @RequestParam(value = "size", defaultValue = "10") int size,
                          Model model) {
 
-        Page<Article> articles = articleService.search(keyword, sourceId, page, size, sort);
+        if ("__NULL__".equals(category)) {
+            category = "__NO_CATEGORY__";
+        }
+
+        Page<Article> articles = articleService.search(keyword, sourceId, category, page, size, sort);
         model.addAttribute("articles", articles);
         model.addAttribute("sources", feedSourceService.findAll());
+        model.addAttribute("categories", articleService.getCategories());
         model.addAttribute("q", keyword != null ? keyword : "");
         model.addAttribute("sourceId", sourceId);
+        model.addAttribute("category", category);
         model.addAttribute("sort", sort);
         model.addAttribute("size", size);
 
