@@ -71,6 +71,12 @@ public class DailyDigestService {
         doGenerate(today);
     }
 
+    // 按日期删除摘要
+    public void deleteDigestByDate(String date) {
+        log.info("删除摘要: {}", date);
+        digestRepository.deleteByDigestDate(date);
+    }
+
     private void doGenerate(String today) {
         try {
             LocalDateTime until = LocalDateTime.of(LocalDate.now(), LocalTime.of(9, 0));

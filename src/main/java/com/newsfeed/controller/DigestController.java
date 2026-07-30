@@ -51,4 +51,11 @@ public class DigestController {
         }
         return "redirect:/digest";
     }
+
+    @PostMapping("/delete/{date}")
+    public String deleteDigest(@PathVariable String date, RedirectAttributes redirectAttributes) {
+        digestService.deleteDigestByDate(date);
+        redirectAttributes.addFlashAttribute("successMsg", "已删除 " + date + " 的摘要");
+        return "redirect:/digest";
+    }
 }
