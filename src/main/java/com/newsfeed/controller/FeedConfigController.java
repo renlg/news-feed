@@ -29,15 +29,23 @@ public class FeedConfigController {
                             @RequestParam(value = "page", defaultValue = "0") int page,
                             @RequestParam(value = "size", defaultValue = "10") int size,
                             @RequestParam(value = "country", required = false) String country,
-                            @RequestParam(value = "tagId", required = false) Long tagId,
+                            @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
                             @RequestParam(value = "enabled", required = false) Boolean enabled,
                             @RequestParam(value = "success", required = false) String successMsg,
                             @RequestParam(value = "error", required = false) String errorMsg) {
-        Page<FeedSource> sourcePage = feedSourceService.findAll(country, tagId, enabled, PageRequest.of(page, size));
+        // Normalize: convert empty string params to null so Thymeleaf @{...} doesn't include them
+        if (country != null && country.isBlank()) {
+            country = null;
+        }
+        if (tagIds != null && tagIds.isEmpty()) {
+            tagIds = null;
+        }
+
+        Page<FeedSource> sourcePage = feedSourceService.findAll(country, tagIds, enabled, PageRequest.of(page, size));
         model.addAttribute("sources", sourcePage.getContent());
         model.addAttribute("sourcePage", sourcePage);
         model.addAttribute("country", country);
-        model.addAttribute("tagId", tagId);
+        model.addAttribute("tagIds", tagIds);
         model.addAttribute("enabled", enabled);
         model.addAttribute("tags", tagService.findAll());
         model.addAttribute("countries", feedSourceService.findDistinctCountries());
@@ -60,7 +68,6 @@ public class FeedConfigController {
                           @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
                           @RequestParam(value = "page", defaultValue = "0") int page,
                           @RequestParam(value = "country", required = false) String country,
-                          @RequestParam(value = "tagId", required = false) Long tagId,
                           @RequestParam(value = "filterEnabled", required = false) Boolean filterEnabled,
                           RedirectAttributes redirectAttributes) {
         try {
@@ -85,7 +92,8 @@ public class FeedConfigController {
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to add feed: " + e.getMessage());
         }
-        return "redirect:/feeds?page=" + page + buildFilterParams(country, tagId, filterEnabled);
+        redirectAttributes.addAttribute("page", page);
+        return "redirect:/feeds" + buildFilterParams(country, tagIds, filterEnabled);
     }
 
     @PutMapping("/{id}")
@@ -94,7 +102,6 @@ public class FeedConfigController {
                              @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
                              @RequestParam(value = "page", defaultValue = "0") int page,
                              @RequestParam(value = "country", required = false) String country,
-                             @RequestParam(value = "tagId", required = false) Long tagId,
                              @RequestParam(value = "filterEnabled", required = false) Boolean filterEnabled,
                              RedirectAttributes redirectAttributes) {
         try {
@@ -120,7 +127,8 @@ public class FeedConfigController {
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to update feed: " + e.getMessage());
         }
-        return "redirect:/feeds?page=" + page + buildFilterParams(country, tagId, filterEnabled);
+        redirectAttributes.addAttribute("page", page);
+        return "redirect:/feeds" + buildFilterParams(country, tagIds, filterEnabled);
     }
 
     @DeleteMapping("/{id}")
