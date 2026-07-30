@@ -6,8 +6,6 @@
     <title>Feed Sources - NewsFeed</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet">
     <link href="/css/style.css" rel="stylesheet">
 </head>
 <body>
@@ -52,12 +50,33 @@
     <!-- Filter row -->
     <form method="get" action="/feeds" class="row g-2 mb-3 align-items-end" onsubmit="return filterFormSubmit(this)">
         <div class="col-auto">
-            <label for="filterTagSelect" class="form-label form-label-sm mb-0">Tags</label>
-            <select class="form-select form-select-sm" id="filterTagSelect" name="tagIds" multiple
-                    style="min-width: 200px;">
-                <option th:each="tag : ${tags}" th:value="${tag.id}" th:text="${tag.name}"
-                        th:selected="${tagIds != null and #lists.contains(tagIds, tag.id)}"></option>
-            </select>
+            <label class="form-label form-label-sm mb-0">Tags</label>
+            <div class="dropdown" id="filterTagDropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                        id="filterTagBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                        aria-expanded="false">
+                    Tags
+                </button>
+                <ul class="dropdown-menu dropdown-menu-dark p-2" aria-labelledby="filterTagBtn"
+                    style="min-width: 220px; max-height: 300px; overflow-y: auto;">
+                    <li th:each="tag : ${tags}">
+                        <div class="form-check">
+                            <input class="form-check-input filter-tag-check" type="checkbox"
+                                   name="tagIds"
+                                   th:value="${tag.id}"
+                                   th:id="'filterTag_' + ${tag.id}"
+                                   th:checked="${tagIds != null and #lists.contains(tagIds, tag.id)}">
+                            <label class="form-check-label" th:for="'filterTag_' + ${tag.id}">
+                                <span class="badge" th:style="'background-color:' + ${tag.color}"
+                                      th:text="${tag.name}">Tag</span>
+                            </label>
+                        </div>
+                    </li>
+                    <li th:if="${#lists.isEmpty(tags)}">
+                        <span class="dropdown-item-text text-muted small">No tags available</span>
+                    </li>
+                </ul>
+            </div>
         </div>
         <div class="col-auto">
             <label for="filterEnabled" class="form-label form-label-sm mb-0">Status</label>
@@ -305,15 +324,17 @@
 </form>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
-    $(document).ready(function() {
-        $('#filterTagSelect').select2({
-            theme: 'bootstrap-5',
-            placeholder: 'Filter by tags...',
-            allowClear: true,
-            width: 'resolve'
+    function updateTagBtnLabel() {
+        var checked = document.querySelectorAll('.filter-tag-check:checked');
+        var btn = document.getElementById('filterTagBtn');
+        btn.textContent = checked.length > 0 ? 'Tags (' + checked.length + ')' : 'Tags';
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        updateTagBtnLabel();
+        document.querySelectorAll('.filter-tag-check').forEach(function(cb) {
+            cb.addEventListener('change', updateTagBtnLabel);
         });
     });
 
@@ -324,11 +345,9 @@
                 ctrl.disabled = true;
             }
         });
-        var multiSelects = form.querySelectorAll('select[multiple]');
-        multiSelects.forEach(function(sel) {
-            if (sel.selectedOptions.length === 0) {
-                sel.disabled = true;
-            }
+        var tagChecks = form.querySelectorAll('.filter-tag-check');
+        tagChecks.forEach(function(cb) {
+            if (!cb.checked) cb.disabled = true;
         });
         return true;
     }
