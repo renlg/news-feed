@@ -18,33 +18,24 @@ public interface FeedSourceRepository extends JpaRepository<FeedSource, Long> {
     boolean existsByUrl(String url);
 
     @Query("SELECT DISTINCT fs FROM FeedSource fs LEFT JOIN fs.tags t " +
-            "WHERE (:country IS NULL OR fs.country = :country) " +
-            "AND (:tagId IS NULL OR t.id = :tagId) " +
+            "WHERE (:tagId IS NULL OR t.id = :tagId) " +
             "AND (:enabled IS NULL OR fs.enabled = :enabled)")
-    Page<FeedSource> findByFilters(@Param("country") String country,
-                                   @Param("tagId") Long tagId,
+    Page<FeedSource> findByFilters(@Param("tagId") Long tagId,
                                    @Param("enabled") Boolean enabled,
                                    Pageable pageable);
 
     @Query("SELECT DISTINCT fs FROM FeedSource fs " +
-            "WHERE (:country IS NULL OR fs.country = :country) " +
-            "AND (:tagIds IS NULL OR fs.id IN (" +
+            "WHERE (:tagIds IS NULL OR fs.id IN (" +
             "   SELECT fss.id FROM FeedSource fss JOIN fss.tags tt WHERE tt.id IN :tagIds" +
             ")) " +
             "AND (:enabled IS NULL OR fs.enabled = :enabled)")
-    Page<FeedSource> findByFilters(@Param("country") String country,
-                                   @Param("tagIds") List<Long> tagIds,
+    Page<FeedSource> findByFilters(@Param("tagIds") List<Long> tagIds,
                                    @Param("enabled") Boolean enabled,
                                    Pageable pageable);
 
     @Query("SELECT DISTINCT fs FROM FeedSource fs LEFT JOIN fs.tags t " +
-            "WHERE (:country IS NULL OR fs.country = :country) " +
-            "AND (:tagId IS NULL OR t.id = :tagId) " +
+            "WHERE (:tagId IS NULL OR t.id = :tagId) " +
             "AND (:enabled IS NULL OR fs.enabled = :enabled)")
-    List<FeedSource> findByFilters(@Param("country") String country,
-                                   @Param("tagId") Long tagId,
+    List<FeedSource> findByFilters(@Param("tagId") Long tagId,
                                    @Param("enabled") Boolean enabled);
-
-    @Query("SELECT DISTINCT fs.country FROM FeedSource fs WHERE fs.country IS NOT NULL ORDER BY fs.country")
-    List<String> findDistinctCountries();
 }

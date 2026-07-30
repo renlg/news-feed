@@ -29,8 +29,6 @@ public class FeedSource {
     @Column(nullable = false)
     private String protocol = "RSS";
 
-    private String country;
-
     @ManyToMany
     @JoinTable(
             name = "feed_source_tag",

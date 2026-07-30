@@ -69,30 +69,26 @@ public class FeedSourceService {
         return articleRepository.countByFeedSourceId(sourceId);
     }
 
-    public Page<FeedSource> findAll(String country, Long tagId, Pageable pageable) {
-        return feedSourceRepository.findByFilters(country, tagId, null, pageable);
+    public Page<FeedSource> findAll(Long tagId, Pageable pageable) {
+        return feedSourceRepository.findByFilters(tagId, null, pageable);
     }
 
-    public Page<FeedSource> findAll(String country, List<Long> tagIds, Boolean enabled, Pageable pageable) {
+    public Page<FeedSource> findAll(List<Long> tagIds, Boolean enabled, Pageable pageable) {
         if (tagIds != null && tagIds.size() == 1) {
-            return feedSourceRepository.findByFilters(country, tagIds.get(0), enabled, pageable);
+            return feedSourceRepository.findByFilters(tagIds.get(0), enabled, pageable);
         }
-        return feedSourceRepository.findByFilters(country, tagIds, enabled, pageable);
+        return feedSourceRepository.findByFilters(tagIds, enabled, pageable);
     }
 
-    public List<FeedSource> findAll(String country, Long tagId) {
-        return feedSourceRepository.findByFilters(country, tagId, null);
+    public List<FeedSource> findAll(Long tagId) {
+        return feedSourceRepository.findByFilters(tagId, null);
     }
 
-    public List<FeedSource> findAll(String country, Long tagId, Boolean enabled) {
-        return feedSourceRepository.findByFilters(country, tagId, enabled);
+    public List<FeedSource> findAll(Long tagId, Boolean enabled) {
+        return feedSourceRepository.findByFilters(tagId, enabled);
     }
 
     public List<Tag> findAllTags() {
         return tagRepository.findAllByOrderByName();
-    }
-
-    public List<String> findDistinctCountries() {
-        return feedSourceRepository.findDistinctCountries();
     }
 }
