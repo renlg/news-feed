@@ -48,9 +48,10 @@ public class AiCategoryService {
             String categoryList = String.join("、", CATEGORIES);
             String systemPrompt = "你是一个新闻分类助手。请根据用户提供的新闻内容，从以下类目中选择最匹配的一个类目，只返回类目名称，不要返回其他内容。类目列表：" + categoryList;
 
+            String modelName = aiConfig.getModel() != null && !aiConfig.getModel().isBlank() ? aiConfig.getModel() : "gpt-4o-mini";
             String jsonBody = """
-                    {"model":"default","messages":[{"role":"system","content":"%s"},{"role":"user","content":"%s"}],"temperature":0.1,"max_tokens":50}"""
-                    .formatted(escapeJson(systemPrompt), escapeJson(userMessage));
+                    {"model":"%s","messages":[{"role":"system","content":"%s"},{"role":"user","content":"%s"}],"temperature":0.1,"max_tokens":50}"""
+                    .formatted(modelName, escapeJson(systemPrompt), escapeJson(userMessage));
 
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(10))

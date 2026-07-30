@@ -11,4 +11,5 @@ public class AiConfig {
 
     private String baseUrl;
     private String key;
+    private String model;
 }
