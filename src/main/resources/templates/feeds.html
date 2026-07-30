@@ -58,12 +58,20 @@
             </select>
         </div>
         <div class="col-auto">
-            <label for="filterTag" class="form-label form-label-sm mb-0">Tag</label>
-            <select class="form-select form-select-sm" id="filterTag" name="tagId" style="min-width:140px;">
-                <option value="">All Tags</option>
-                <option th:each="tag : ${tags}" th:value="${tag.id}" th:text="${tag.name}"
-                        th:selected="${tag.id == tagId}"></option>
-            </select>
+            <label for="filterTag" class="form-label form-label-sm mb-0">Tags</label>
+            <div id="filterTagContainer" class="border border-secondary rounded p-1"
+                 style="max-height: 120px; overflow-y: auto; min-width: 160px;">
+                <div class="form-check form-check-sm" th:each="tag : ${tags}">
+                    <input class="form-check-input tag-filter-cb" type="checkbox"
+                           name="tagIds" th:value="${tag.id}" th:id="'filterTag_' + ${tag.id}"
+                           th:checked="${tagIds != null and #lists.contains(tagIds, tag.id)}">
+                    <label class="form-check-label" th:for="'filterTag_' + ${tag.id}">
+                        <span class="badge" th:style="'background-color:' + ${tag.color}"
+                              th:text="${tag.name}">Tag</span>
+                    </label>
+                </div>
+                <div th:if="${#lists.isEmpty(tags)}" class="text-muted small px-1">No tags</div>
+            </div>
         </div>
         <div class="col-auto">
             <label for="filterEnabled" class="form-label form-label-sm mb-0">Status</label>
@@ -107,7 +115,7 @@
                         <input type="hidden" name="enabled" th:value="${!source.enabled}">
                         <input type="hidden" name="page" th:value="${sourcePage.number}">
                         <input type="hidden" name="country" th:value="${country}">
-                        <input type="hidden" name="tagId" th:value="${tagId}">
+                        <input type="hidden" name="tagIds" th:value="${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}">
                         <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent">
                             <span th:if="${source.enabled}" class="badge bg-success">
                                 <i class="bi bi-check-circle"></i> Active
@@ -163,7 +171,7 @@
                               class="d-inline">
                             <input type="hidden" name="page" th:value="${sourcePage.number}">
                             <input type="hidden" name="country" th:value="${country}">
-                            <input type="hidden" name="tagId" th:value="${tagId}">
+                            <input type="hidden" name="tagIds" th:value="${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}">
                             <input type="hidden" name="enabled" th:value="${enabled}">
                             <button type="submit" class="btn btn-outline-warning" title="Fetch Now">
                                 <i class="bi bi-arrow-clockwise"></i>
@@ -174,7 +182,7 @@
                                 th:data-id="${source.id}"
                                 th:data-page="${sourcePage.number}"
                                 th:data-country="${country}"
-                                th:data-tag-id="${tagId}"
+                                th:data-tag-ids="${tagIds}"
                                 th:data-enabled="${enabled}"
                                 onclick="confirmDelete(this)">
                             <i class="bi bi-trash"></i>
@@ -199,13 +207,13 @@
         <nav>
             <ul class="pagination pagination-sm mb-0">
                 <li class="page-item" th:classappend="${sourcePage.first} ? 'disabled'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number - 1}, country=${country}, tagId=${tagId}, enabled=${enabled})}" aria-label="Previous">
+                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number - 1}, country=${country}, tagIds=${tagIds}, enabled=${enabled})}" aria-label="Previous">
                         <span aria-hidden="true">&laquo;</span>
                     </a>
                 </li>
                 <li th:if="${sourcePage.totalPages > 1}" class="page-item"
                     th:classappend="${sourcePage.number == 0} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=0, country=${country}, tagId=${tagId}, enabled=${enabled})}">1</a>
+                    <a class="page-link" th:href="@{/feeds(page=0, country=${country}, tagIds=${tagIds}, enabled=${enabled})}">1</a>
                 </li>
                 <li th:if="${sourcePage.number > 3}" class="page-item disabled">
                     <span class="page-link">…</span>
@@ -213,17 +221,17 @@
                 <li th:each="i : ${#numbers.sequence(sourcePage.number - 1, sourcePage.number + 1)}"
                     th:if="${i > 0 && i < sourcePage.totalPages - 1}"
                     class="page-item" th:classappend="${i == sourcePage.number} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=${i}, country=${country}, tagId=${tagId}, enabled=${enabled})}" th:text="${i + 1}">1</a>
+                    <a class="page-link" th:href="@{/feeds(page=${i}, country=${country}, tagIds=${tagIds}, enabled=${enabled})}" th:text="${i + 1}">1</a>
                 </li>
                 <li th:if="${sourcePage.number < sourcePage.totalPages - 4}" class="page-item disabled">
                     <span class="page-link">…</span>
                 </li>
                 <li th:if="${sourcePage.totalPages > 1}" class="page-item"
                     th:classappend="${sourcePage.number == sourcePage.totalPages - 1} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.totalPages - 1}, country=${country}, tagId=${tagId}, enabled=${enabled})}" th:text="${sourcePage.totalPages}">Last</a>
+                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.totalPages - 1}, country=${country}, tagIds=${tagIds}, enabled=${enabled})}" th:text="${sourcePage.totalPages}">Last</a>
                 </li>
                 <li class="page-item" th:classappend="${sourcePage.last} ? 'disabled'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number + 1}, country=${country}, tagId=${tagId}, enabled=${enabled})}" aria-label="Next">
+                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number + 1}, country=${country}, tagIds=${tagIds}, enabled=${enabled})}" aria-label="Next">
                         <span aria-hidden="true">&raquo;</span>
                     </a>
                 </li>
@@ -237,7 +245,7 @@
             <button class="btn btn-sm btn-outline-secondary" id="feedsPageJumpBtn"
                     th:data-total="${sourcePage.totalPages}"
                     th:data-country="${country}"
-                    th:data-tagid="${tagId}"
+                    th:data-tagids="${tagIds}"
                     th:data-enabled="${enabled}">Go</button>
         </div>
     </div>
@@ -254,7 +262,8 @@
                 <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
                 <input type="hidden" name="page" id="feedPage" value="0">
                 <input type="hidden" name="country" id="feedCountryParam" th:value="${country}">
-                <input type="hidden" name="tagId" id="feedTagIdParam" th:value="${tagId}">
+                <input type="hidden" name="filterTagIds" id="feedFilterTagIdsParam"
+                       th:value="${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}">
                 <input type="hidden" name="filterEnabled" id="feedFilterEnabledParam" th:value="${enabled}">
                 <div class="modal-body">
                     <div class="mb-3">
@@ -325,10 +334,17 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     function filterFormSubmit(form) {
-        var controls = form.querySelectorAll('select, input');
+        var controls = form.querySelectorAll('select, input:not([type=checkbox])');
         controls.forEach(function(ctrl) {
             if (ctrl.value === '' && ctrl.name) {
                 ctrl.disabled = true;
+            }
+        });
+        // For checkboxes, ensure unchecked ones don't submit empty values
+        var checkboxes = form.querySelectorAll('input[type=checkbox]');
+        checkboxes.forEach(function(cb) {
+            if (!cb.checked) {
+                cb.disabled = true;
             }
         });
         return true;
@@ -395,10 +411,15 @@
         if (p >= 1 && p <= total) {
             var params = 'page=' + (p - 1);
             var country = this.dataset.country;
-            var tagId = this.dataset.tagid;
+            var tagIds = this.dataset.tagids;
             var enabled = this.dataset.enabled;
             if (country) params += '&country=' + encodeURIComponent(country);
-            if (tagId) params += '&tagId=' + tagId;
+            if (tagIds) {
+                var ids = tagIds.split(',');
+                ids.forEach(function(id) {
+                    if (id.trim()) params += '&tagIds=' + id.trim();
+                });
+            }
             if (enabled) params += '&enabled=' + enabled;
             window.location.href = '/feeds?' + params;
         }
@@ -410,10 +431,15 @@
             var page = btn.dataset.page || 0;
             var action = '/feeds/' + btn.dataset.id + '?page=' + page;
             var country = btn.dataset.country;
-            var tagId = btn.dataset.tagId;
+            var tagIds = btn.dataset.tagIds;
             var enabled = btn.dataset.enabled;
             if (country) action += '&country=' + encodeURIComponent(country);
-            if (tagId) action += '&tagId=' + tagId;
+            if (tagIds) {
+                var ids = tagIds.split(',');
+                ids.forEach(function(id) {
+                    if (id.trim()) action += '&tagIds=' + id.trim();
+                });
+            }
             if (enabled) action += '&enabled=' + enabled;
             form.action = action;
             form.submit();

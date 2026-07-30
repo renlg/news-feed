@@ -68,6 +68,7 @@ public class FeedConfigController {
                           @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
                           @RequestParam(value = "page", defaultValue = "0") int page,
                           @RequestParam(value = "country", required = false) String country,
+                          @RequestParam(value = "filterTagIds", required = false) String filterTagIdsStr,
                           @RequestParam(value = "filterEnabled", required = false) Boolean filterEnabled,
                           RedirectAttributes redirectAttributes) {
         try {
@@ -93,7 +94,7 @@ public class FeedConfigController {
             redirectAttributes.addAttribute("error", "Failed to add feed: " + e.getMessage());
         }
         redirectAttributes.addAttribute("page", page);
-        return "redirect:/feeds" + buildFilterParams(country, tagIds, filterEnabled);
+        return "redirect:/feeds" + buildFilterParams(country, parseTagIds(filterTagIdsStr), filterEnabled);
     }
 
     @PutMapping("/{id}")
@@ -102,6 +103,7 @@ public class FeedConfigController {
                              @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
                              @RequestParam(value = "page", defaultValue = "0") int page,
                              @RequestParam(value = "country", required = false) String country,
+                             @RequestParam(value = "filterTagIds", required = false) String filterTagIdsStr,
                              @RequestParam(value = "filterEnabled", required = false) Boolean filterEnabled,
                              RedirectAttributes redirectAttributes) {
         try {
@@ -128,14 +130,14 @@ public class FeedConfigController {
             redirectAttributes.addAttribute("error", "Failed to update feed: " + e.getMessage());
         }
         redirectAttributes.addAttribute("page", page);
-        return "redirect:/feeds" + buildFilterParams(country, tagIds, filterEnabled);
+        return "redirect:/feeds" + buildFilterParams(country, parseTagIds(filterTagIdsStr), filterEnabled);
     }
 
     @DeleteMapping("/{id}")
     public String deleteFeed(@PathVariable Long id,
                              @RequestParam(value = "page", defaultValue = "0") int page,
                              @RequestParam(value = "country", required = false) String country,
-                             @RequestParam(value = "tagId", required = false) Long tagId,
+                             @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
                              @RequestParam(value = "enabled", required = false) Boolean enabled,
                              RedirectAttributes redirectAttributes) {
         try {
@@ -144,7 +146,8 @@ public class FeedConfigController {
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to delete feed: " + e.getMessage());
         }
-        return "redirect:/feeds?page=" + page + buildFilterParams(country, tagId, enabled);
+        redirectAttributes.addAttribute("page", page);
+        return "redirect:/feeds" + buildFilterParams(country, tagIds, enabled);
     }
 
     @PostMapping("/{id}/toggle")
@@ -152,7 +155,7 @@ public class FeedConfigController {
                              @RequestParam boolean enabled,
                              @RequestParam(value = "page", defaultValue = "0") int page,
                              @RequestParam(value = "country", required = false) String country,
-                             @RequestParam(value = "tagId", required = false) Long tagId,
+                             @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
                              RedirectAttributes redirectAttributes) {
         try {
             feedSourceService.toggleEnabled(id, enabled);
@@ -161,14 +164,15 @@ public class FeedConfigController {
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to toggle feed: " + e.getMessage());
         }
-        return "redirect:/feeds?page=" + page + buildFilterParams(country, tagId, null);
+        redirectAttributes.addAttribute("page", page);
+        return "redirect:/feeds" + buildFilterParams(country, tagIds, null);
     }
 
     @PostMapping("/{id}/fetch")
     public String fetchNow(@PathVariable Long id,
                            @RequestParam(value = "page", defaultValue = "0") int page,
                            @RequestParam(value = "country", required = false) String country,
-                           @RequestParam(value = "tagId", required = false) Long tagId,
+                           @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
                            @RequestParam(value = "enabled", required = false) Boolean enabled,
                            RedirectAttributes redirectAttributes) {
         try {
@@ -177,20 +181,38 @@ public class FeedConfigController {
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to trigger fetch: " + e.getMessage());
         }
-        return "redirect:/feeds?page=" + page + buildFilterParams(country, tagId, enabled);
+        redirectAttributes.addAttribute("page", page);
+        return "redirect:/feeds" + buildFilterParams(country, tagIds, enabled);
     }
 
-    private String buildFilterParams(String country, Long tagId, Boolean enabled) {
+    private String buildFilterParams(String country, List<Long> tagIds, Boolean enabled) {
         StringBuilder sb = new StringBuilder();
         if (country != null && !country.isBlank()) {
             sb.append("&country=").append(country);
         }
-        if (tagId != null) {
-            sb.append("&tagId=").append(tagId);
+        if (tagIds != null && !tagIds.isEmpty()) {
+            for (Long tid : tagIds) {
+                sb.append("&tagIds=").append(tid);
+            }
         }
         if (enabled != null) {
             sb.append("&enabled=").append(enabled);
         }
         return sb.toString();
+    }
+
+    private List<Long> parseTagIds(String tagIdsStr) {
+        if (tagIdsStr == null || tagIdsStr.isBlank()) return null;
+        List<Long> result = new ArrayList<>();
+        for (String s : tagIdsStr.split(",")) {
+            s = s.trim();
+            if (!s.isEmpty()) {
+                try {
+                    result.add(Long.parseLong(s));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return result.isEmpty() ? null : result;
     }
 }

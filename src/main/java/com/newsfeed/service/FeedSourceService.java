@@ -73,8 +73,11 @@ public class FeedSourceService {
         return feedSourceRepository.findByFilters(country, tagId, null, pageable);
     }
 
-    public Page<FeedSource> findAll(String country, Long tagId, Boolean enabled, Pageable pageable) {
-        return feedSourceRepository.findByFilters(country, tagId, enabled, pageable);
+    public Page<FeedSource> findAll(String country, List<Long> tagIds, Boolean enabled, Pageable pageable) {
+        if (tagIds != null && tagIds.size() == 1) {
+            return feedSourceRepository.findByFilters(country, tagIds.get(0), enabled, pageable);
+        }
+        return feedSourceRepository.findByFilters(country, tagIds, enabled, pageable);
     }
 
     public List<FeedSource> findAll(String country, Long tagId) {

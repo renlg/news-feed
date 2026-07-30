@@ -26,6 +26,17 @@ public interface FeedSourceRepository extends JpaRepository<FeedSource, Long> {
                                    @Param("enabled") Boolean enabled,
                                    Pageable pageable);
 
+    @Query("SELECT DISTINCT fs FROM FeedSource fs " +
+            "WHERE (:country IS NULL OR fs.country = :country) " +
+            "AND (:tagIds IS NULL OR fs.id IN (" +
+            "   SELECT fss.id FROM FeedSource fss JOIN fss.tags tt WHERE tt.id IN :tagIds" +
+            ")) " +
+            "AND (:enabled IS NULL OR fs.enabled = :enabled)")
+    Page<FeedSource> findByFilters(@Param("country") String country,
+                                   @Param("tagIds") List<Long> tagIds,
+                                   @Param("enabled") Boolean enabled,
+                                   Pageable pageable);
+
     @Query("SELECT DISTINCT fs FROM FeedSource fs LEFT JOIN fs.tags t " +
             "WHERE (:country IS NULL OR fs.country = :country) " +
             "AND (:tagId IS NULL OR t.id = :tagId) " +
