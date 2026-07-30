@@ -60,7 +60,7 @@
                     </div>
                     <ul class="dropdown-menu dropdown-menu-dark w-100 p-2"
                         style="max-height: 300px; overflow-y: auto;"></ul>
-                    <input type="hidden" name="tagIds" id="filterTagPickerHidden"
+                    <input type="hidden" id="filterTagPickerHidden"
                            th:value="${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}">
                 </div>
         </div>
@@ -277,7 +277,7 @@
                             </div>
                             <ul class="dropdown-menu dropdown-menu-dark w-100 p-2"
                                 style="max-height: 300px; overflow-y: auto;"></ul>
-                            <input type="hidden" name="tagIds" id="modalTagPickerHidden" value="">
+                            <input type="hidden" id="modalTagPickerHidden" value="">
                         </div>
                     </div>
                     <div class="mb-3">

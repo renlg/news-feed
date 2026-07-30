@@ -31,7 +31,7 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
            "AND (:sourceId IS NULL OR a.feedSourceId = :sourceId) " +
            "AND (:category IS NULL OR :category = '' " +
            "OR (:category = '__NO_CATEGORY__' AND (a.category IS NULL OR a.category = '')) " +
-           "OR LOWER(a.category) LIKE LOWER(CONCAT('%', :category, '%')))")
+           "OR LOWER(CONCAT(',', a.category, ',')) LIKE LOWER(CONCAT('%,', :category, ',%')))")
     Page<Article> search(@Param("q") String keyword,
                          @Param("sourceId") Long sourceId,
                          @Param("category") String category,
@@ -43,7 +43,7 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
            "AND (:sourceId IS NULL OR a.feedSourceId = :sourceId) " +
            "AND (:category IS NULL OR :category = '' " +
            "OR (:category = '__NO_CATEGORY__' AND (a.category IS NULL OR a.category = '')) " +
-           "OR LOWER(a.category) LIKE LOWER(CONCAT('%', :category, '%')))")
+           "OR LOWER(CONCAT(',', a.category, ',')) LIKE LOWER(CONCAT('%,', :category, ',%')))")
     List<Article> search(@Param("q") String keyword,
                          @Param("sourceId") Long sourceId,
                          @Param("category") String category,

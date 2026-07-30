@@ -99,6 +99,9 @@ public class RssFeedParser implements FeedParser {
                 if (entry.getCategories() != null && !entry.getCategories().isEmpty()) {
                     String categories = entry.getCategories().stream()
                             .map(c -> c.getName())
+                            .filter(name -> name != null && !name.trim().isEmpty())
+                            .map(String::trim)
+                            .distinct()
                             .reduce((a, b) -> a + "," + b)
                             .orElse("");
                     if (!categories.isEmpty()) {
