@@ -48,11 +48,14 @@ public class DailyDigestService {
     private final ArticleDedupService articleDedupService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ReentrantLock generateLock = new ReentrantLock();
+    private final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor(
+            r -> { Thread t = new Thread(r, "digest-async"); t.setDaemon(true); return t; });
     private final ExecutorService categoryExecutor = Executors.newFixedThreadPool(5,
             r -> { Thread t = new Thread(r, "digest-category"); t.setDaemon(true); return t; });
 
     private static final AtomicReference<String> generationStatus = new AtomicReference<>("idle");
     private static final AtomicReference<String> generationDate = new AtomicReference<>("");
+    private static final AtomicReference<String> generationError = new AtomicReference<>("");
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -83,6 +86,8 @@ public class DailyDigestService {
                 return;
             }
             doGenerate(yesterday);
+        } catch (Exception e) {
+            log.error("定时生成摘要失败: {}", e.getMessage(), e);
         } finally {
             generateLock.unlock();
         }
@@ -94,11 +99,11 @@ public class DailyDigestService {
         String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
         if (!generateLock.tryLock()) {
             log.info("已有摘要生成任务在执行中，跳过");
-            generationStatus.set("idle");
             return;
         }
         generationStatus.set("generating");
         generationDate.set(yesterday);
+        generationError.set("");
         CompletableFuture.runAsync(() -> {
             try {
                 if (digestRepository.existsByDigestDate(yesterday)) {
@@ -108,15 +113,27 @@ public class DailyDigestService {
                 doGenerate(yesterday);
             } catch (Exception e) {
                 log.error("异步生成摘要失败: {}", e.getMessage(), e);
+                generationError.set("生成失败: " + e.getMessage());
+            } catch (Throwable t) {
+                log.error("异步生成摘要发生严重错误: {}", t.getMessage(), t);
+                generationError.set("生成失败: " + t.getMessage());
             } finally {
-                generationStatus.set("idle");
+                if (!generationError.get().isEmpty()) {
+                    generationStatus.set("error");
+                } else {
+                    generationStatus.set("idle");
+                }
                 generateLock.unlock();
             }
-        }, categoryExecutor);
+        }, asyncExecutor);
     }
 
     public String getGenerationStatus() {
         return generationStatus.get();
+    }
+
+    public String getGenerationError() {
+        return generationError.get();
     }
 
     // 按日期删除摘要
@@ -126,72 +143,68 @@ public class DailyDigestService {
     }
 
     private void doGenerate(String digestDate) {
-        try {
-            LocalDate targetDate = LocalDate.parse(digestDate, DATE_FORMATTER);
-            LocalDateTime until = LocalDateTime.of(targetDate.plusDays(1), LocalTime.of(9, 0));
-            LocalDateTime since = until.minusHours(24);
+        LocalDate targetDate = LocalDate.parse(digestDate, DATE_FORMATTER);
+        LocalDateTime until = LocalDateTime.of(targetDate.plusDays(1), LocalTime.of(9, 0));
+        LocalDateTime since = until.minusHours(24);
 
-            // 查询各分类的高分文章（分数>5），按分数降序
-            Map<String, List<Article>> candidates = new HashMap<>();
-            candidates.put("domestic", articleRepository.findHighScoringByCategory("domestic", MIN_SCORE, since, until)
-                    .stream().limit(DOMESTIC_FETCH_LIMIT).collect(Collectors.toList()));
-            candidates.put("ai", articleRepository.findHighScoringByCategory("ai", MIN_SCORE, since, until)
-                    .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
-            candidates.put("tech", articleRepository.findHighScoringByCategory("tech", MIN_SCORE, since, until)
-                    .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
-            candidates.put("japan", articleRepository.findHighScoringByCategory("japan", MIN_SCORE, since, until)
-                    .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
-            candidates.put("international", articleRepository.findHighScoringByCategory("international", MIN_SCORE, since, until)
-                    .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
+        // 查询各分类的高分文章（分数>5），按分数降序
+        Map<String, List<Article>> candidates = new HashMap<>();
+        candidates.put("domestic", articleRepository.findHighScoringByCategory("domestic", MIN_SCORE, since, until)
+                .stream().limit(DOMESTIC_FETCH_LIMIT).collect(Collectors.toList()));
+        candidates.put("ai", articleRepository.findHighScoringByCategory("ai", MIN_SCORE, since, until)
+                .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
+        candidates.put("tech", articleRepository.findHighScoringByCategory("tech", MIN_SCORE, since, until)
+                .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
+        candidates.put("japan", articleRepository.findHighScoringByCategory("japan", MIN_SCORE, since, until)
+                .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
+        candidates.put("international", articleRepository.findHighScoringByCategory("international", MIN_SCORE, since, until)
+                .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
 
-            int total = candidates.values().stream().mapToInt(List::size).sum();
-            log.info("高分文章候选: domestic={}, ai={}, tech={}, japan={}, international={}, 总计={}",
-                    candidates.get("domestic").size(), candidates.get("ai").size(),
-                    candidates.get("tech").size(), candidates.get("japan").size(),
-                    candidates.get("international").size(), total);
+        int total = candidates.values().stream().mapToInt(List::size).sum();
+        log.info("高分文章候选: domestic={}, ai={}, tech={}, japan={}, international={}, 总计={}",
+                candidates.get("domestic").size(), candidates.get("ai").size(),
+                candidates.get("tech").size(), candidates.get("japan").size(),
+                candidates.get("international").size(), total);
 
-            if (total == 0) {
-                log.warn("没有高分文章，跳过生成摘要");
-                return;
-            }
-
-            // 对每个分类先去重，再调用AI筛选+合并相似新闻（5个分类并行处理）
-            List<String> categoryOrder = List.of("domestic", "ai", "tech", "japan", "international");
-            Map<String, List<DigestItem>> finalItems = new ConcurrentHashMap<>();
-
-            List<CompletableFuture<Void>> futures = categoryOrder.stream()
-                    .map(category -> CompletableFuture.runAsync(() -> {
-                        List<Article> articles = candidates.get(category);
-                        if (articles.isEmpty()) {
-                            finalItems.put(category, Collections.emptyList());
-                            return;
-                        }
-                        ArticleDedupService.DedupResult dedupResult = articleDedupService.deduplicate(articles);
-                        List<Article> deduped = dedupResult.articles();
-                        Map<Long, List<String>> clusterLinks = dedupResult.clusterLinks();
-                        if (deduped.size() > AI_CANDIDATE_LIMIT) {
-                            deduped = deduped.subList(0, AI_CANDIDATE_LIMIT);
-                        }
-                        Map<Long, Article> articleMap = deduped.stream()
-                                .collect(Collectors.toMap(Article::getId, a -> a, (a, b) -> a));
-                        log.info("AI筛选合并 {} 分类: {} → {} 篇（去重后）→ {} 篇（截取top {}）",
-                                category, articles.size(), dedupResult.articles().size(),
-                                deduped.size(), AI_CANDIDATE_LIMIT);
-                        List<DigestItem> items = selectAndMergeWithAI(category, deduped, articleMap, clusterLinks);
-                        finalItems.put(category, items);
-                        log.info("{} 分类最终: {} 条新闻", category, items.size());
-                    }, categoryExecutor))
-                    .toList();
-
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-            // 生成摘要（按固定顺序汇总）
-            DailyDigest digest = buildDigest(digestDate, finalItems);
-            digestRepository.save(digest);
-            log.info("每日新闻摘要生成完成: {}", digestDate);
-        } catch (Exception e) {
-            log.error("生成每日新闻摘要失败: {}", e.getMessage(), e);
+        if (total == 0) {
+            log.warn("没有高分文章，跳过生成摘要");
+            return;
         }
+
+        // 对每个分类先去重，再调用AI筛选+合并相似新闻（5个分类并行处理）
+        List<String> categoryOrder = List.of("domestic", "ai", "tech", "japan", "international");
+        Map<String, List<DigestItem>> finalItems = new ConcurrentHashMap<>();
+
+        List<CompletableFuture<Void>> futures = categoryOrder.stream()
+                .map(category -> CompletableFuture.runAsync(() -> {
+                    List<Article> articles = candidates.get(category);
+                    if (articles.isEmpty()) {
+                        finalItems.put(category, Collections.emptyList());
+                        return;
+                    }
+                    ArticleDedupService.DedupResult dedupResult = articleDedupService.deduplicate(articles);
+                    List<Article> deduped = dedupResult.articles();
+                    Map<Long, List<String>> clusterLinks = dedupResult.clusterLinks();
+                    if (deduped.size() > AI_CANDIDATE_LIMIT) {
+                        deduped = deduped.subList(0, AI_CANDIDATE_LIMIT);
+                    }
+                    Map<Long, Article> articleMap = deduped.stream()
+                            .collect(Collectors.toMap(Article::getId, a -> a, (a, b) -> a));
+                    log.info("AI筛选合并 {} 分类: {} → {} 篇（去重后）→ {} 篇（截取top {}）",
+                            category, articles.size(), dedupResult.articles().size(),
+                            deduped.size(), AI_CANDIDATE_LIMIT);
+                    List<DigestItem> items = selectAndMergeWithAI(category, deduped, articleMap, clusterLinks);
+                    finalItems.put(category, items);
+                    log.info("{} 分类最终: {} 条新闻", category, items.size());
+                }, categoryExecutor))
+                .toList();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        // 生成摘要（按固定顺序汇总）
+        DailyDigest digest = buildDigest(digestDate, finalItems);
+        digestRepository.save(digest);
+        log.info("每日新闻摘要生成完成: {}", digestDate);
     }
 
     // ========== AI筛选+合并 ==========

@@ -59,6 +59,12 @@ public class DigestController {
         return digestService.getGenerationStatus();
     }
 
+    @GetMapping("/generation-error")
+    @ResponseBody
+    public String generationError() {
+        return digestService.getGenerationError();
+    }
+
     @PostMapping("/delete/{date}")
     public String deleteDigest(@PathVariable String date, RedirectAttributes redirectAttributes) {
         digestService.deleteDigestByDate(date);

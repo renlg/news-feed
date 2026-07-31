@@ -698,6 +698,19 @@ function pollGenerationStatus() {
                 if (status === 'idle') {
                     clearInterval(interval);
                     window.location.href = '/digest';
+                } else if (status === 'error') {
+                    clearInterval(interval);
+                    fetch('/digest/generation-error')
+                        .then(r => r.text())
+                        .then(errMsg => {
+                            alert('摘要生成失败: ' + (errMsg || '未知错误，请查看服务器日志'));
+                            const btn = document.getElementById('btn-generate');
+                            const btnText = document.getElementById('generate-btn-text');
+                            if (btn && btnText) {
+                                btn.disabled = false;
+                                btnText.textContent = '立即生成';
+                            }
+                        });
                 }
             })
             .catch(() => {});
@@ -721,6 +734,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     btnText.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>生成中...';
                 }
                 pollGenerationStatus();
+            } else if (status === 'error') {
+                fetch('/digest/generation-error')
+                    .then(r => r.text())
+                    .then(errMsg => {
+                        if (errMsg) alert('上次摘要生成失败: ' + errMsg);
+                    });
             }
         })
         .catch(() => {});
