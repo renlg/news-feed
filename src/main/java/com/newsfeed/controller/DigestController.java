@@ -51,8 +51,12 @@ public class DigestController {
     @PostMapping("/generate")
     public String generateDigest(RedirectAttributes redirectAttributes) {
         try {
-            digestService.forceGenerateDigestAsync();
-            redirectAttributes.addFlashAttribute("successMsg", "正在后台生成新闻摘要，请稍后刷新页面查看");
+            boolean submitted = digestService.forceGenerateDigestAsync();
+            if (submitted) {
+                redirectAttributes.addFlashAttribute("successMsg", "正在后台生成新闻摘要，请稍后刷新页面查看");
+            } else {
+                redirectAttributes.addFlashAttribute("successMsg", "已有任务在执行中，请稍后刷新页面查看");
+            }
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("errorMsg", "生成失败: " + e.getMessage());
         }

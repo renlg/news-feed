@@ -29,7 +29,6 @@ public class ArticleDedupService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final double EMBEDDING_SIMILARITY_THRESHOLD = 0.85;
-    private static final double TITLE_SIMILARITY_THRESHOLD = 0.7;
     private static final int EMBEDDING_BATCH_SIZE = 100;
     private static final int EMBEDDING_INPUT_LIMIT = 100;
 
@@ -121,7 +120,6 @@ public class ArticleDedupService {
         }
 
         try {
-            List<String> inputs = new ArrayList<>();
             List<Long> uncachedIds = new ArrayList<>();
             List<Article> uncachedArticles = new ArrayList<>();
             Map<Long, float[]> cachedEmbeddings = new LinkedHashMap<>();
@@ -134,13 +132,6 @@ public class ArticleDedupService {
                     uncachedIds.add(a.getId());
                     uncachedArticles.add(a);
                 }
-                String title = a.getTitle() != null ? a.getTitle() : "";
-                String summary = a.getAiSummary() != null ? a.getAiSummary() : "";
-                String input = title + " " + summary;
-                if (input.length() > EMBEDDING_INPUT_LIMIT) {
-                    input = input.substring(0, EMBEDDING_INPUT_LIMIT);
-                }
-                inputs.add(input);
             }
 
             List<float[]> embeddings;
@@ -176,11 +167,6 @@ public class ArticleDedupService {
                 embeddings = articles.stream()
                         .map(a -> cachedEmbeddings.get(a.getId()))
                         .collect(Collectors.toList());
-            }
-
-            if (embeddings == null || embeddings.size() != articles.size()) {
-                log.warn("Embedding获取失败或不完整，降级使用标题去重结果");
-                return new DedupResult(articles, titleClusterLinks);
             }
 
             return clusterAndSelect(articles, embeddings, titleClusterLinks);

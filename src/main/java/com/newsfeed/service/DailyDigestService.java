@@ -60,7 +60,6 @@ public class DailyDigestService {
             r -> { Thread t = new Thread(r, "digest-category"); t.setDaemon(true); return t; });
 
     private static final AtomicReference<String> generationStatus = new AtomicReference<>("idle");
-    private static final AtomicReference<String> generationDate = new AtomicReference<>("");
     private static final AtomicReference<String> generationError = new AtomicReference<>("");
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -86,29 +85,37 @@ public class DailyDigestService {
             log.info("已有摘要生成任务在执行中，跳过");
             return;
         }
+        generationStatus.set("generating");
+        generationError.set("");
         try {
             if (digestRepository.existsByDigestDate(yesterday)) {
                 log.info("昨日摘要已存在，跳过");
+                generationStatus.set("idle");
                 return;
             }
             doGenerate(yesterday);
-        } catch (Exception e) {
-            log.error("定时生成摘要失败: {}", e.getMessage(), e);
+        } catch (Throwable t) {
+            log.error("定时生成摘要失败: {}", t.getMessage(), t);
+            generationError.set("生成失败: " + t.getMessage());
+            generationStatus.set("error");
         } finally {
+            if (generationStatus.get().equals("generating")) {
+                generationStatus.set("idle");
+            }
             generating.set(false);
         }
     }
 
     // 手动触发生成（异步执行，页面立即返回）
-    public void forceGenerateDigestAsync() {
+    // 返回 true=任务已提交，false=已有任务在执行中
+    public boolean forceGenerateDigestAsync() {
         log.info("手动触发异步生成昨日新闻摘要...");
         String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
         if (!generating.compareAndSet(false, true)) {
             log.info("已有摘要生成任务在执行中，跳过");
-            return;
+            return false;
         }
         generationStatus.set("generating");
-        generationDate.set(yesterday);
         generationError.set("");
         CompletableFuture.runAsync(() -> {
             try {
@@ -117,11 +124,8 @@ public class DailyDigestService {
                     log.info("已删除昨日的旧摘要记录");
                 }
                 doGenerate(yesterday);
-            } catch (Exception e) {
-                log.error("异步生成摘要失败: {}", e.getMessage(), e);
-                generationError.set("生成失败: " + e.getMessage());
             } catch (Throwable t) {
-                log.error("异步生成摘要发生严重错误: {}", t.getMessage(), t);
+                log.error("异步生成摘要失败: {}", t.getMessage(), t);
                 generationError.set("生成失败: " + t.getMessage());
             } finally {
                 if (!generationError.get().isEmpty()) {
@@ -132,6 +136,7 @@ public class DailyDigestService {
                 generating.set(false);
             }
         }, asyncExecutor);
+        return true;
     }
 
     public String getGenerationStatus() {
@@ -652,12 +657,6 @@ public class DailyDigestService {
 
     public Optional<DailyDigest> getDigestByDate(String date) {
         return digestRepository.findByDigestDate(date);
-    }
-
-    public Optional<DailyDigestRepository.DigestSummary> getLatestDigestSummary() {
-        List<DailyDigestRepository.DigestSummary> list = digestRepository.findAllByOrderByDigestDateDesc(
-                PageRequest.of(0, 1)).getContent();
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }
 
     public List<DailyDigestRepository.DigestSummary> getAllDigestSummaries() {
