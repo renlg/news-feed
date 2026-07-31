@@ -5,6 +5,7 @@ import com.newsfeed.model.Article;
 import com.newsfeed.model.DailyDigest;
 import com.newsfeed.repository.ArticleRepository;
 import com.newsfeed.repository.DailyDigestRepository;
+import com.newsfeed.service.ArticleDedupService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -42,6 +43,7 @@ public class DailyDigestService {
     private final ArticleRepository articleRepository;
     private final DailyDigestRepository digestRepository;
     private final AiConfig aiConfig;
+    private final ArticleDedupService articleDedupService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ReentrantLock generateLock = new ReentrantLock();
 
@@ -127,7 +129,7 @@ public class DailyDigestService {
                 return;
             }
 
-            // 对每个分类调用AI筛选+合并相似新闻
+            // 对每个分类先去重，再调用AI筛选+合并相似新闻
             Map<String, List<DigestItem>> finalItems = new HashMap<>();
             for (Map.Entry<String, List<Article>> entry : candidates.entrySet()) {
                 String category = entry.getKey();
@@ -136,8 +138,12 @@ public class DailyDigestService {
                     finalItems.put(category, Collections.emptyList());
                     continue;
                 }
-                log.info("AI筛选合并 {} 分类: {} 篇候选文章", category, articles.size());
-                List<DigestItem> items = selectAndMergeWithAI(category, articles);
+                // P1+P2 去重
+                List<Article> deduped = articleDedupService.deduplicate(articles);
+                Map<Long, Article> articleMap = deduped.stream()
+                        .collect(Collectors.toMap(Article::getId, a -> a, (a, b) -> a));
+                log.info("AI筛选合并 {} 分类: {} → {} 篇（去重后）", category, articles.size(), deduped.size());
+                List<DigestItem> items = selectAndMergeWithAI(category, deduped, articleMap);
                 finalItems.put(category, items);
                 log.info("{} 分类最终: {} 条新闻", category, items.size());
             }
@@ -153,7 +159,7 @@ public class DailyDigestService {
 
     // ========== AI筛选+合并 ==========
 
-    private List<DigestItem> selectAndMergeWithAI(String category, List<Article> articles) {
+    private List<DigestItem> selectAndMergeWithAI(String category, List<Article> articles, Map<Long, Article> articleMap) {
         if (articles.isEmpty()) return Collections.emptyList();
         if (aiConfig.getKey() == null || aiConfig.getKey().isBlank()) {
             log.warn("AI未配置，直接使用文章摘要");
@@ -165,9 +171,8 @@ public class DailyDigestService {
             for (Article a : articles) {
                 String title = a.getTitle() != null ? a.getTitle() : "";
                 String summary = a.getAiSummary() != null ? a.getAiSummary() : "";
-                String link = a.getLink() != null ? a.getLink() : "";
-                articleList.append(String.format("- ID=%d | 标题: %s | 摘要: %s | 链接: %s\n",
-                        a.getId(), title, summary, link));
+                articleList.append(String.format("- ID=%d | 标题: %s | 摘要: %s\n",
+                        a.getId(), title, summary));
             }
 
             String categoryName = getCategoryDisplayName(category);
@@ -177,11 +182,11 @@ public class DailyDigestService {
                     任务：从以下%d条「%s」类候选新闻中，筛选最多%d条最重要的，合并报道同一事件的多个来源。
 
                     输出格式（严格遵守，不得有任何偏差）：
-                    {"items":[{"summary":"50字以内中文摘要","links":["url1","url2"]},{"summary":"...","links":["..."]}]}
+                    {"items":[{"summary":"50字以内中文摘要","ids":[1,2]}]}
 
                     规则：
                     - summary不超过50字，概括核心事实
-                    - 同一事件的多篇报道合并为一条，links保留所有来源链接
+                    - 同一事件的多篇报道合并为一条，ids保留所有文章编号
                     - 按重要性降序排列
                     - 直接输出JSON对象，不要用```包裹，不要加任何前缀或后缀文字
                     """, articles.size(), categoryName, OUTPUT_LIMIT);
@@ -231,6 +236,8 @@ public class DailyDigestService {
                 if (content != null && !content.isEmpty()) {
                     List<DigestItem> items = parseDigestItems(content);
                     if (!items.isEmpty()) {
+                        items = resolveIdsToLinks(items, articleMap);
+                        items = deduplicateAcrossItems(items);
                         return items;
                     }
                     log.warn("AI筛选返回内容无法解析为JSON，回退使用文章摘要");
@@ -245,6 +252,39 @@ public class DailyDigestService {
         }
 
         return buildFallbackItems(articles);
+    }
+
+    private List<DigestItem> resolveIdsToLinks(List<DigestItem> items, Map<Long, Article> articleMap) {
+        List<DigestItem> result = new ArrayList<>();
+        for (DigestItem item : items) {
+            List<String> links = new ArrayList<>();
+            for (String idStr : item.links) {
+                try {
+                    Long id = Long.parseLong(idStr);
+                    Article article = articleMap.get(id);
+                    if (article != null && article.getLink() != null) {
+                        links.add(article.getLink());
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            if (!links.isEmpty()) {
+                result.add(new DigestItem(item.summary, links));
+            }
+        }
+        return result;
+    }
+
+    private List<DigestItem> deduplicateAcrossItems(List<DigestItem> items) {
+        Set<String> seenSummaries = new HashSet<>();
+        List<DigestItem> result = new ArrayList<>();
+        for (DigestItem item : items) {
+            String normalizedSummary = item.summary.replaceAll("\\s+", "").toLowerCase();
+            if (seenSummaries.contains(normalizedSummary)) continue;
+            seenSummaries.add(normalizedSummary);
+            result.add(item);
+        }
+        return result;
     }
 
     private List<DigestItem> buildFallbackItems(List<Article> articles) {
@@ -267,15 +307,15 @@ public class DailyDigestService {
             for (JsonNode item : itemsArray) {
                 String summary = item.has("summary") ? item.get("summary").asText() : null;
                 if (summary == null || summary.isBlank()) continue;
-                List<String> links = new ArrayList<>();
-                JsonNode linksNode = item.get("links");
-                if (linksNode != null && linksNode.isArray()) {
-                    for (JsonNode link : linksNode) {
-                        String l = link.asText().trim();
-                        if (!l.isEmpty()) links.add(l);
+                List<String> ids = new ArrayList<>();
+                JsonNode idsNode = item.get("ids");
+                if (idsNode != null && idsNode.isArray()) {
+                    for (JsonNode id : idsNode) {
+                        String idStr = id.asText().trim();
+                        if (!idStr.isEmpty()) ids.add(idStr);
                     }
                 }
-                items.add(new DigestItem(summary, links));
+                items.add(new DigestItem(summary, ids));
             }
         } catch (Exception e) {
             log.warn("AI筛选响应解析失败: {}, content前300字符: {}",

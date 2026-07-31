@@ -68,7 +68,7 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     @Query("SELECT a FROM Article a WHERE a.aiCategory = :aiCategory AND a.fetchedAt >= :since ORDER BY a.importanceScore DESC")
     List<Article> findByAiCategoryAndFetchedAtAfter(@Param("aiCategory") String aiCategory, @Param("since") LocalDateTime since);
 
-    @Query("SELECT a FROM Article a WHERE a.aiCategory = :aiCategory AND a.importanceScore > :minScore AND a.fetchedAt >= :since AND a.fetchedAt < :until ORDER BY a.importanceScore DESC")
+    @Query("SELECT a FROM Article a WHERE a.aiCategory = :aiCategory AND a.importanceScore > :minScore AND COALESCE(a.publishedAt, a.fetchedAt) >= :since AND COALESCE(a.publishedAt, a.fetchedAt) < :until ORDER BY a.importanceScore DESC")
     List<Article> findHighScoringByCategory(@Param("aiCategory") String aiCategory, @Param("minScore") int minScore, @Param("since") LocalDateTime since, @Param("until") LocalDateTime until);
 
     @Query("SELECT COUNT(a) FROM Article a WHERE a.aiProcessed = true AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
