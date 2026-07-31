@@ -4,7 +4,7 @@ import com.newsfeed.model.Article;
 import com.newsfeed.model.FeedSource;
 import com.newsfeed.service.ArticleAiService;
 import com.newsfeed.service.ArticleService;
-import com.newsfeed.service.FeedFetchService;
+import com.newsfeed.service.FeedFetchWorker;
 import com.newsfeed.service.FeedSourceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -20,7 +20,7 @@ public class FeedApiController {
 
     private final FeedSourceService feedSourceService;
     private final ArticleService articleService;
-    private final FeedFetchService feedFetchService;
+    private final FeedFetchWorker feedFetchWorker;
     private final ArticleAiService articleAiService;
 
     @GetMapping
@@ -66,7 +66,7 @@ public class FeedApiController {
     public ResponseEntity<?> fetchNow(@PathVariable Long id) {
         return feedSourceService.findById(id)
                 .map(source -> {
-                    feedFetchService.processSource(source);
+                    feedFetchWorker.processSource(source);
                     return ResponseEntity.ok(Map.of("message", "Fetch triggered"));
                 })
                 .orElse(ResponseEntity.notFound().build());

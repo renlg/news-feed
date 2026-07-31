@@ -57,72 +57,74 @@ public class RssFeedParser implements FeedParser {
             HttpResponse<InputStream> response = client.send(request,
                     HttpResponse.BodyHandlers.ofInputStream());
 
-            // 使用JDOM2 SAXBuilder直接配置XML解析器，允许DOCTYPE声明
             SAXBuilder saxBuilder = new SAXBuilder();
             saxBuilder.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false);
             saxBuilder.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-            Document jdomDoc = saxBuilder.build(new XmlReader(response.body()));
 
-            SyndFeedInput input = new SyndFeedInput();
-            SyndFeed feed = input.build(jdomDoc);
+            try (InputStream is = response.body()) {
+                Document jdomDoc = saxBuilder.build(new XmlReader(is));
 
-            for (SyndEntry entry : feed.getEntries()) {
-                String content = null;
-                if (entry.getContents() != null && !entry.getContents().isEmpty()) {
-                    content = entry.getContents().get(0).getValue();
-                } else if (entry.getDescription() != null) {
-                    content = entry.getDescription().getValue();
-                }
+                SyndFeedInput input = new SyndFeedInput();
+                SyndFeed feed = input.build(jdomDoc);
 
-                String summary = null;
-                if (entry.getDescription() != null) {
-                    summary = entry.getDescription().getValue();
-                }
-
-                LocalDateTime publishedAt = LocalDateTime.now();
-                Date publishedDate = entry.getPublishedDate();
-                if (publishedDate == null) {
-                    publishedDate = entry.getUpdatedDate();
-                }
-                if (publishedDate != null) {
-                    publishedAt = publishedDate.toInstant()
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDateTime();
-                }
-
-                Article article = Article.builder()
-                        .title(entry.getTitle())
-                        .link(entry.getLink())
-                        .content(content)
-                        .summary(summary)
-                        .author(entry.getAuthor())
-                        .publishedAt(publishedAt)
-                        .fetchedAt(LocalDateTime.now())
-                        .feedSourceId(source.getId())
-                        .build();
-
-                if (entry.getCategories() != null && !entry.getCategories().isEmpty()) {
-                    String categories = entry.getCategories().stream()
-                            .map(c -> c.getName())
-                            .filter(name -> name != null && !name.trim().isEmpty())
-                            .map(String::trim)
-                            .distinct()
-                            .reduce((a, b) -> a + "," + b)
-                            .orElse("");
-                    if (!categories.isEmpty()) {
-                        article.setCategory(categories);
+                for (SyndEntry entry : feed.getEntries()) {
+                    String content = null;
+                    if (entry.getContents() != null && !entry.getContents().isEmpty()) {
+                        content = entry.getContents().get(0).getValue();
+                    } else if (entry.getDescription() != null) {
+                        content = entry.getDescription().getValue();
                     }
-                }
 
-                if (Boolean.TRUE.equals(source.getAiCategorize())
-                        && (article.getCategory() == null || article.getCategory().isBlank())) {
-                    String aiCategory = aiCategoryService.categorize(summary, content);
-                    if (aiCategory != null && !aiCategory.isBlank()) {
-                        article.setCategory(aiCategory);
+                    String summary = null;
+                    if (entry.getDescription() != null) {
+                        summary = entry.getDescription().getValue();
                     }
-                }
 
-                articles.add(article);
+                    LocalDateTime publishedAt = LocalDateTime.now();
+                    Date publishedDate = entry.getPublishedDate();
+                    if (publishedDate == null) {
+                        publishedDate = entry.getUpdatedDate();
+                    }
+                    if (publishedDate != null) {
+                        publishedAt = publishedDate.toInstant()
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDateTime();
+                    }
+
+                    Article article = Article.builder()
+                            .title(entry.getTitle())
+                            .link(entry.getLink())
+                            .content(content)
+                            .summary(summary)
+                            .author(entry.getAuthor())
+                            .publishedAt(publishedAt)
+                            .fetchedAt(LocalDateTime.now())
+                            .feedSourceId(source.getId())
+                            .build();
+
+                    if (entry.getCategories() != null && !entry.getCategories().isEmpty()) {
+                        String categories = entry.getCategories().stream()
+                                .map(c -> c.getName())
+                                .filter(name -> name != null && !name.trim().isEmpty())
+                                .map(String::trim)
+                                .distinct()
+                                .reduce((a, b) -> a + "," + b)
+                                .orElse("");
+                        if (!categories.isEmpty()) {
+                            article.setCategory(categories);
+                        }
+                    }
+
+                    if (Boolean.TRUE.equals(source.getAiCategorize())
+                            && (article.getCategory() == null || article.getCategory().isBlank())) {
+                        String aiCategory = aiCategoryService.categorize(summary, content);
+                        if (aiCategory != null && !aiCategory.isBlank()) {
+                            article.setCategory(aiCategory);
+                        }
+                    }
+
+                    articles.add(article);
+                }
             }
         } catch (Exception e) {
             log.error("Failed to parse feed from {}: {}", url, e.getMessage(), e);

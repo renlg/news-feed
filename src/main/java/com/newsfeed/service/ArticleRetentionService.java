@@ -173,6 +173,9 @@ public class ArticleRetentionService {
     }
 
     public Path getBackupPath(String yearMonth) {
+        if (yearMonth == null || !yearMonth.matches("^\\d{4}-\\d{2}$")) {
+            throw new IllegalArgumentException("Invalid yearMonth format, expected yyyy-MM");
+        }
         return Paths.get(backupDir, "articles_" + yearMonth + ".zip");
     }
 

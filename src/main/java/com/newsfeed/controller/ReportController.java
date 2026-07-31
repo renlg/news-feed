@@ -58,7 +58,12 @@ public class ReportController {
 
     @GetMapping("/backups/{yearMonth}/download")
     public ResponseEntity<Resource> downloadBackup(@PathVariable String yearMonth) {
-        Path path = articleRetentionService.getBackupPath(yearMonth);
+        Path path;
+        try {
+            path = articleRetentionService.getBackupPath(yearMonth);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
 
         if (!path.toFile().exists()) {
             return ResponseEntity.notFound().build();

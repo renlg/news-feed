@@ -2,7 +2,7 @@ package com.newsfeed.controller;
 
 import com.newsfeed.model.FeedSource;
 import com.newsfeed.model.Tag;
-import com.newsfeed.service.FeedFetchService;
+import com.newsfeed.service.FeedFetchWorker;
 import com.newsfeed.service.FeedSourceService;
 import com.newsfeed.service.TagService;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +21,7 @@ import java.util.*;
 public class FeedConfigController {
 
     private final FeedSourceService feedSourceService;
-    private final FeedFetchService feedFetchService;
+    private final FeedFetchWorker feedFetchWorker;
     private final TagService tagService;
 
     @GetMapping
@@ -89,7 +89,8 @@ public class FeedConfigController {
             redirectAttributes.addAttribute("error", "Failed to add feed: " + e.getMessage());
         }
         redirectAttributes.addAttribute("page", page);
-        return "redirect:/feeds" + buildFilterParams(parseTagIds(filterTagIdsStr), filterEnabled);
+        addFilterAttributes(redirectAttributes, parseTagIds(filterTagIdsStr), filterEnabled);
+        return "redirect:/feeds";
     }
 
     @PutMapping("/{id}")
@@ -124,7 +125,8 @@ public class FeedConfigController {
             redirectAttributes.addAttribute("error", "Failed to update feed: " + e.getMessage());
         }
         redirectAttributes.addAttribute("page", page);
-        return "redirect:/feeds" + buildFilterParams(parseTagIds(filterTagIdsStr), filterEnabled);
+        addFilterAttributes(redirectAttributes, parseTagIds(filterTagIdsStr), filterEnabled);
+        return "redirect:/feeds";
     }
 
     @DeleteMapping("/{id}")
@@ -140,7 +142,8 @@ public class FeedConfigController {
             redirectAttributes.addAttribute("error", "Failed to delete feed: " + e.getMessage());
         }
         redirectAttributes.addAttribute("page", page);
-        return "redirect:/feeds" + buildFilterParams(tagIds, enabled);
+        addFilterAttributes(redirectAttributes, tagIds, enabled);
+        return "redirect:/feeds";
     }
 
     @PostMapping("/{id}/toggle")
@@ -157,7 +160,8 @@ public class FeedConfigController {
             redirectAttributes.addAttribute("error", "Failed to toggle feed: " + e.getMessage());
         }
         redirectAttributes.addAttribute("page", page);
-        return "redirect:/feeds" + buildFilterParams(tagIds, null);
+        addFilterAttributes(redirectAttributes, tagIds, null);
+        return "redirect:/feeds";
     }
 
     @PostMapping("/{id}/fetch")
@@ -167,26 +171,25 @@ public class FeedConfigController {
                            @RequestParam(value = "enabled", required = false) Boolean enabled,
                            RedirectAttributes redirectAttributes) {
         try {
-            feedSourceService.findById(id).ifPresent(feedFetchService::processSource);
+            feedSourceService.findById(id).ifPresent(feedFetchWorker::processSource);
             redirectAttributes.addAttribute("success", "Fetch triggered for feed source");
         } catch (Exception e) {
             redirectAttributes.addAttribute("error", "Failed to trigger fetch: " + e.getMessage());
         }
         redirectAttributes.addAttribute("page", page);
-        return "redirect:/feeds" + buildFilterParams(tagIds, enabled);
+        addFilterAttributes(redirectAttributes, tagIds, enabled);
+        return "redirect:/feeds";
     }
 
-    private String buildFilterParams(List<Long> tagIds, Boolean enabled) {
-        StringBuilder sb = new StringBuilder();
+    private void addFilterAttributes(RedirectAttributes redirectAttributes, List<Long> tagIds, Boolean enabled) {
         if (tagIds != null && !tagIds.isEmpty()) {
             for (Long tid : tagIds) {
-                sb.append("&tagIds=").append(tid);
+                redirectAttributes.addAttribute("tagIds", tid);
             }
         }
         if (enabled != null) {
-            sb.append("&enabled=").append(enabled);
+            redirectAttributes.addAttribute("enabled", enabled);
         }
-        return sb.toString();
     }
 
     private List<Long> parseTagIds(String tagIdsStr) {
