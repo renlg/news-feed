@@ -48,7 +48,7 @@ public class SecurityConfig {
             )
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                .ignoringRequestMatchers("/h2-console/**", "/api/feeds/ai/**")
+                .ignoringRequestMatchers("/h2-console/**", "/api/feeds/ai/**", "/digest/delete/**")
             );
 
         return http.build();

@@ -10,6 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -37,6 +40,7 @@ public class DailyDigestService {
     private final ArticleRepository articleRepository;
     private final DailyDigestRepository digestRepository;
     private final AiConfig aiConfig;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -48,27 +52,27 @@ public class DailyDigestService {
     // AI最终输出条数
     private static final int OUTPUT_LIMIT = 10;
 
-    // 每天早上9点执行
+    // 每天早上9点执行，生成前一天的摘要
     @Scheduled(cron = "0 0 9 * * ?")
     public void generateDailyDigest() {
-        log.info("开始生成每日新闻摘要...");
-        String today = LocalDate.now().format(DATE_FORMATTER);
-        if (digestRepository.existsByDigestDate(today)) {
-            log.info("今日摘要已生成，跳过");
+        log.info("开始生成昨日新闻摘要...");
+        String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
+        if (digestRepository.existsByDigestDate(yesterday)) {
+            log.info("昨日摘要已存在，跳过");
             return;
         }
-        doGenerate(today);
+        doGenerate(yesterday);
     }
 
-    // 手动触发生成（强制重新生成）
+    // 手动触发生成（强制重新生成前一天的摘要）
     public void forceGenerateDigest() {
-        log.info("手动触发生成每日新闻摘要...");
-        String today = LocalDate.now().format(DATE_FORMATTER);
-        if (digestRepository.existsByDigestDate(today)) {
-            digestRepository.deleteByDigestDate(today);
-            log.info("已删除今日旧摘要记录");
+        log.info("手动触发生成昨日新闻摘要...");
+        String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
+        if (digestRepository.existsByDigestDate(yesterday)) {
+            digestRepository.deleteByDigestDate(yesterday);
+            log.info("已删除昨日的旧摘要记录");
         }
-        doGenerate(today);
+        doGenerate(yesterday);
     }
 
     // 按日期删除摘要
@@ -77,9 +81,10 @@ public class DailyDigestService {
         digestRepository.deleteByDigestDate(date);
     }
 
-    private void doGenerate(String today) {
+    private void doGenerate(String digestDate) {
         try {
-            LocalDateTime until = LocalDateTime.of(LocalDate.now(), LocalTime.of(9, 0));
+            LocalDate targetDate = LocalDate.parse(digestDate, DATE_FORMATTER);
+            LocalDateTime until = LocalDateTime.of(targetDate.plusDays(1), LocalTime.of(9, 0));
             LocalDateTime since = until.minusHours(24);
 
             // 查询各分类的高分文章（分数>5），按分数降序
@@ -122,9 +127,9 @@ public class DailyDigestService {
             }
 
             // 生成摘要
-            DailyDigest digest = buildDigest(today, finalItems);
+            DailyDigest digest = buildDigest(digestDate, finalItems);
             digestRepository.save(digest);
-            log.info("每日新闻摘要生成完成: {}", today);
+            log.info("每日新闻摘要生成完成: {}", digestDate);
         } catch (Exception e) {
             log.error("生成每日新闻摘要失败: {}", e.getMessage(), e);
         }
@@ -218,34 +223,31 @@ public class DailyDigestService {
 
     private List<DigestItem> parseDigestItems(String content) {
         List<DigestItem> items = new ArrayList<>();
-        String jsonStr = extractJsonArray(content);
-        if (jsonStr == null) {
-            log.warn("无法从AI筛选响应中提取JSON数组");
-            return items;
-        }
-
-        // 解析每个item: {"summary": "...", "links": ["..."]}
-        Pattern itemPattern = Pattern.compile(
-                "\"summary\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"links\"\\s*:\\s*\\[([^\\]]*)]");
-        Matcher matcher = itemPattern.matcher(jsonStr);
-
-        while (matcher.find()) {
-            try {
-                String summary = matcher.group(1);
-                summary = summary.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
-
-                String linksStr = matcher.group(2);
+        try {
+            String stripped = stripMarkdownCodeBlock(content);
+            JsonNode itemsArray = findItemsArray(stripped);
+            if (itemsArray == null || !itemsArray.isArray()) {
+                log.warn("无法从AI筛选响应中提取JSON数组, content前200字符: {}",
+                        stripped.length() > 200 ? stripped.substring(0, 200) : stripped);
+                return items;
+            }
+            for (JsonNode item : itemsArray) {
+                String summary = item.has("summary") ? item.get("summary").asText() : null;
+                if (summary == null || summary.isBlank()) continue;
                 List<String> links = new ArrayList<>();
-                Pattern linkPattern = Pattern.compile("\"([^\"]+)\"");
-                Matcher linkMatcher = linkPattern.matcher(linksStr);
-                while (linkMatcher.find()) {
-                    String link = linkMatcher.group(1).trim();
-                    if (!link.isEmpty()) links.add(link);
+                JsonNode linksNode = item.get("links");
+                if (linksNode != null && linksNode.isArray()) {
+                    for (JsonNode link : linksNode) {
+                        String l = link.asText().trim();
+                        if (!l.isEmpty()) links.add(l);
+                    }
                 }
                 items.add(new DigestItem(summary, links));
-            } catch (Exception e) {
-                log.warn("解析摘要条目失败: {}", e.getMessage());
             }
+        } catch (Exception e) {
+            log.warn("AI筛选响应解析失败: {}, content前300字符: {}",
+                    e.getMessage(),
+                    content.length() > 300 ? content.substring(0, 300) : content);
         }
         log.info("AI筛选解析到 {} 条新闻", items.size());
         return items;
@@ -334,6 +336,22 @@ public class DailyDigestService {
 
     private String extractContent(String jsonBody) {
         try {
+            JsonNode root = objectMapper.readTree(jsonBody);
+            JsonNode choices = root.get("choices");
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                JsonNode message = choices.get(0).get("message");
+                if (message != null) {
+                    JsonNode contentNode = message.get("content");
+                    if (contentNode != null && !contentNode.isNull()) {
+                        String content = contentNode.asText();
+                        if (!content.isEmpty()) return content;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Jackson解析API响应失败，回退手动提取: {}", e.getMessage());
+        }
+        try {
             int choicesIdx = jsonBody.indexOf("\"choices\"");
             if (choicesIdx < 0) return null;
             String content = extractField(jsonBody, "\"content\"", choicesIdx);
@@ -384,31 +402,80 @@ public class DailyDigestService {
         }
     }
 
-    private String extractJsonArray(String content) {
-        int startIdx = content.indexOf("[");
-        int endIdx = content.lastIndexOf("]");
-        if (startIdx >= 0 && endIdx > startIdx) {
-            return content.substring(startIdx, endIdx + 1);
+    private String stripMarkdownCodeBlock(String content) {
+        String trimmed = content.trim();
+        Pattern codeBlock = Pattern.compile("```(?:json|JSON)?\\s*\\n?(.*?)\\n?\\s*```", Pattern.DOTALL);
+        Matcher m = codeBlock.matcher(trimmed);
+        if (m.find()) {
+            return m.group(1).trim();
         }
-        // 尝试提取JSON对象中的items数组
-        int itemsIdx = content.indexOf("\"items\"");
-        if (itemsIdx >= 0) {
-            int arrStart = content.indexOf("[", itemsIdx);
-            int arrEnd = content.lastIndexOf("]");
-            if (arrStart >= 0 && arrEnd > arrStart) {
-                return content.substring(arrStart, arrEnd + 1);
+        return trimmed;
+    }
+
+    private JsonNode findItemsArray(String content) {
+        try {
+            JsonNode node = objectMapper.readTree(content);
+            if (node.isArray()) return node;
+            if (node.isObject()) {
+                if (node.has("items") && node.get("items").isArray()) return node.get("items");
+                for (JsonNode child : node) {
+                    if (child.isArray()) return child;
+                }
             }
+        } catch (Exception e) {
+            log.debug("直接JSON解析失败，尝试提取: {}", e.getMessage());
+        }
+        int startIdx = content.indexOf('[');
+        int braceIdx = content.indexOf('{');
+        String jsonCandidate;
+        if (startIdx >= 0 && (braceIdx < 0 || startIdx < braceIdx)) {
+            int end = findMatchingBracket(content, startIdx, '[', ']');
+            if (end > startIdx) jsonCandidate = content.substring(startIdx, end + 1);
+            else return null;
+        } else if (braceIdx >= 0) {
+            int end = findMatchingBracket(content, braceIdx, '{', '}');
+            if (end > braceIdx) jsonCandidate = content.substring(braceIdx, end + 1);
+            else return null;
+        } else {
+            return null;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(jsonCandidate);
+            if (node.isArray()) return node;
+            if (node.isObject()) {
+                if (node.has("items") && node.get("items").isArray()) return node.get("items");
+                for (JsonNode child : node) {
+                    if (child.isArray()) return child;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("提取后JSON解析也失败: {}", e.getMessage());
         }
         return null;
     }
 
-    private String extractJsonFromContent(String content) {
-        int startIdx = content.indexOf("{");
-        int endIdx = content.lastIndexOf("}");
-        if (startIdx >= 0 && endIdx > startIdx) {
-            return content.substring(startIdx, endIdx + 1);
+    private int findMatchingBracket(String s, int start, char open, char close) {
+        int depth = 0;
+        boolean inString = false;
+        for (int i = start; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && inString && i + 1 < s.length()) {
+                i++;
+                continue;
+            }
+            if (c == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (!inString) {
+                if (c == open) depth++;
+                else if (c == close) {
+                    depth--;
+                    if (depth == 0) return i;
+                }
+            }
         }
-        return null;
+        return -1;
     }
 
     // ========== 数据类 ==========

@@ -72,10 +72,17 @@ public class FeedFetchService {
             List<Article> articles = parser.parse(source.getUrl(), source);
 
             if (!articles.isEmpty()) {
+                int totalParsed = articles.size();
+                LocalDateTime cutoff = LocalDateTime.now().minusDays(30);
+                articles = articles.stream()
+                        .filter(a -> a.getPublishedAt() != null && a.getPublishedAt().isAfter(cutoff))
+                        .toList();
+                int skippedOld = totalParsed - articles.size();
+
                 int limit = Math.min(articles.size(), maxArticlesPerFeed);
                 saved = articleService.saveArticles(articles.subList(0, limit));
-                log.info("Feed '{}': parsed {} articles, saved {} new",
-                        source.getName(), articles.size(), saved);
+                log.info("Feed '{}': parsed {} articles, skipped {} old, saved {} new",
+                        source.getName(), totalParsed, skippedOld, saved);
             }
 
             feedSourceService.updateLastFetchedAt(source.getId());
