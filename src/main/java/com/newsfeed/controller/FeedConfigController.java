@@ -183,9 +183,7 @@ public class FeedConfigController {
 
     private void addFilterAttributes(RedirectAttributes redirectAttributes, List<Long> tagIds, Boolean enabled) {
         if (tagIds != null && !tagIds.isEmpty()) {
-            for (Long tid : tagIds) {
-                redirectAttributes.addAttribute("tagIds", tid);
-            }
+            redirectAttributes.addAttribute("tagIds", tagIds);
         }
         if (enabled != null) {
             redirectAttributes.addAttribute("enabled", enabled);
