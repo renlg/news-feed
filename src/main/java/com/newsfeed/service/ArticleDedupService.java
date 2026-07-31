@@ -36,7 +36,9 @@ public class ArticleDedupService {
             "^(独家|快讯|突发|重磅|最新|紧急|速递|关注|热点|焦点|爆料|官方|刚刚|今日|明日|" +
             "早报|晚报|日报|午报|晨报|速报|头条|要闻| bulletin|breaking|exclusive)");
     private static final Pattern PUNCT_PATTERN = Pattern.compile(
-            "[\\s\\p{Punct}\\p{IsPunctuation}！？。、，；：""''【】（）《》「」『』〈〉…—\\-|·~～]+");
+            "[\\s\\p{Punct}\uFF01\uFF1F\u3002\u3001\uFF0C\uFF1B\uFF1A\u201C\u201D\u2018\u2019" +
+            "\u3010\u3011\uFF08\uFF09\u300A\u300B\u300C\u300D\u300E\u300F\u3008\u3009" +
+            "\u2026\u2014\\-|\u00B7~\uFF09]+");
 
     public List<Article> deduplicate(List<Article> articles) {
         if (articles.size() <= 1) return articles;
