@@ -17,7 +17,6 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -34,7 +33,14 @@ public class ArticleDedupService {
     private static final int EMBEDDING_BATCH_SIZE = 100;
     private static final int EMBEDDING_INPUT_LIMIT = 100;
 
-    private final ConcurrentHashMap<Long, float[]> embeddingCache = new ConcurrentHashMap<>();
+    private static final int EMBEDDING_CACHE_MAX_SIZE = 5000;
+    private final Map<Long, float[]> embeddingCache = Collections.synchronizedMap(
+            new LinkedHashMap<Long, float[]>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<Long, float[]> eldest) {
+                    return size() > EMBEDDING_CACHE_MAX_SIZE;
+                }
+            });
 
     private static final Pattern PREFIX_PATTERN = Pattern.compile(
             "^(独家|快讯|突发|重磅|最新|紧急|速递|关注|热点|焦点|爆料|官方|刚刚|今日|明日|" +
@@ -267,9 +273,7 @@ public class ArticleDedupService {
 
             String jsonBody = objectMapper.writeValueAsString(requestBody);
 
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .build();
+            HttpClient client = AiConfig.getSharedHttpClient();
 
             String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
             if (baseUrl.endsWith("/v1")) {
@@ -293,7 +297,7 @@ public class ArticleDedupService {
 
             return parseEmbeddings(response.body());
         } catch (Exception e) {
-            log.warn("Embedding API调用失败: {}", e.getMessage());
+            log.warn("Embedding API调用失败: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -316,7 +320,7 @@ public class ArticleDedupService {
             }
             return embeddings;
         } catch (Exception e) {
-            log.warn("Embedding响应解析失败: {}", e.getMessage());
+            log.warn("Embedding响应解析失败: {}", e.getMessage(), e);
             return null;
         }
     }

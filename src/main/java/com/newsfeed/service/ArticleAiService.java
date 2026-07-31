@@ -181,10 +181,7 @@ public class ArticleAiService {
                     "{\"model\":\"%s\",\"messages\":[{\"role\":\"system\",\"content\":\"%s\"},{\"role\":\"user\",\"content\":\"%s\"}],\"temperature\":0.2,\"max_tokens\":4000}",
                     modelName, escapeJson(systemPrompt), escapeJson(userMessage));
 
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
+            HttpClient client = AiConfig.getSharedHttpClient();
 
             String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
             if (baseUrl.endsWith("/v1")) {

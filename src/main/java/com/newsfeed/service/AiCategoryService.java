@@ -53,10 +53,7 @@ public class AiCategoryService {
                     {"model":"%s","messages":[{"role":"system","content":"%s"},{"role":"user","content":"%s"}],"temperature":0.1,"max_tokens":500}"""
                     .formatted(modelName, escapeJson(systemPrompt), escapeJson(userMessage));
 
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
+            HttpClient client = AiConfig.getSharedHttpClient();
 
             String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
             if (baseUrl.endsWith("/v1")) {

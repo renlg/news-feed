@@ -25,12 +25,18 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 /**
  * 每日新闻摘要服务
@@ -47,7 +53,7 @@ public class DailyDigestService {
     private final AiConfig aiConfig;
     private final ArticleDedupService articleDedupService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final ReentrantLock generateLock = new ReentrantLock();
+    private final AtomicBoolean generating = new AtomicBoolean(false);
     private final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor(
             r -> { Thread t = new Thread(r, "digest-async"); t.setDaemon(true); return t; });
     private final ExecutorService categoryExecutor = Executors.newFixedThreadPool(5,
@@ -76,7 +82,7 @@ public class DailyDigestService {
     public void generateDailyDigest() {
         log.info("开始生成昨日新闻摘要...");
         String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
-        if (!generateLock.tryLock()) {
+        if (!generating.compareAndSet(false, true)) {
             log.info("已有摘要生成任务在执行中，跳过");
             return;
         }
@@ -89,7 +95,7 @@ public class DailyDigestService {
         } catch (Exception e) {
             log.error("定时生成摘要失败: {}", e.getMessage(), e);
         } finally {
-            generateLock.unlock();
+            generating.set(false);
         }
     }
 
@@ -97,7 +103,7 @@ public class DailyDigestService {
     public void forceGenerateDigestAsync() {
         log.info("手动触发异步生成昨日新闻摘要...");
         String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
-        if (!generateLock.tryLock()) {
+        if (!generating.compareAndSet(false, true)) {
             log.info("已有摘要生成任务在执行中，跳过");
             return;
         }
@@ -123,7 +129,7 @@ public class DailyDigestService {
                 } else {
                     generationStatus.set("idle");
                 }
-                generateLock.unlock();
+                generating.set(false);
             }
         }, asyncExecutor);
     }
@@ -188,15 +194,17 @@ public class DailyDigestService {
                     if (deduped.size() > AI_CANDIDATE_LIMIT) {
                         deduped = deduped.subList(0, AI_CANDIDATE_LIMIT);
                     }
-                    Map<Long, Article> articleMap = deduped.stream()
-                            .collect(Collectors.toMap(Article::getId, a -> a, (a, b) -> a));
                     log.info("AI筛选合并 {} 分类: {} → {} 篇（去重后）→ {} 篇（截取top {}）",
                             category, articles.size(), dedupResult.articles().size(),
                             deduped.size(), AI_CANDIDATE_LIMIT);
-                    List<DigestItem> items = selectAndMergeWithAI(category, deduped, articleMap, clusterLinks);
+                    List<DigestItem> items = selectAndMergeWithAI(category, deduped, clusterLinks);
                     finalItems.put(category, items);
                     log.info("{} 分类最终: {} 条新闻", category, items.size());
-                }, categoryExecutor))
+                }, categoryExecutor).exceptionally(ex -> {
+                    log.error("处理 {} 分类时发生异常: {}", category, ex.getMessage(), ex);
+                    finalItems.put(category, Collections.emptyList());
+                    return null;
+                }))
                 .toList();
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -210,7 +218,6 @@ public class DailyDigestService {
     // ========== AI筛选+合并 ==========
 
     private List<DigestItem> selectAndMergeWithAI(String category, List<Article> articles,
-                                                   Map<Long, Article> articleMap,
                                                    Map<Long, List<String>> clusterLinks) {
         if (articles.isEmpty()) return Collections.emptyList();
         if (aiConfig.getKey() == null || aiConfig.getKey().isBlank()) {
@@ -264,10 +271,7 @@ public class DailyDigestService {
 
             String jsonBody = objectMapper.writeValueAsString(requestBody);
 
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
+            HttpClient client = AiConfig.getSharedHttpClient();
 
             String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
             if (baseUrl.endsWith("/v1")) {
@@ -289,7 +293,7 @@ public class DailyDigestService {
                 if (content != null && !content.isEmpty()) {
                     List<DigestItem> items = parseDigestItems(content);
                     if (!items.isEmpty()) {
-                        items = resolveIdsToLinks(items, articleMap, clusterLinks);
+                        items = resolveIdsToLinks(items, articles, clusterLinks);
                         items = deduplicateAcrossItems(items);
                         return items;
                     }
@@ -301,22 +305,20 @@ public class DailyDigestService {
                 log.warn("AI筛选API返回状态 {}: {}", response.statusCode(), response.body());
             }
         } catch (Exception e) {
-            log.warn("AI筛选失败({}): {}", category, e.getMessage());
+            log.warn("AI筛选失败({}): {}", category, e.getMessage(), e);
         }
 
         return buildFallbackItems(articles, clusterLinks);
     }
 
-    private List<DigestItem> resolveIdsToLinks(List<DigestItem> items, Map<Long, Article> articleMap,
+    private List<DigestItem> resolveIdsToLinks(List<DigestItem> items, List<Article> articles,
                                                Map<Long, List<String>> clusterLinks) {
-        List<Article> indexedArticles = new ArrayList<>(articleMap.values());
-
         List<DigestItem> result = new ArrayList<>();
         for (DigestItem item : items) {
             List<String> links = new ArrayList<>();
             Set<String> seenLinks = new LinkedHashSet<>();
             for (String idStr : item.links) {
-                Article article = resolveArticle(idStr, indexedArticles);
+                Article article = resolveArticle(idStr, articles);
                 if (article != null && article.getLink() != null) {
                     seenLinks.add(article.getLink());
                     List<String> additional = clusterLinks.get(article.getId());
@@ -335,12 +337,13 @@ public class DailyDigestService {
         return result;
     }
 
-    private Article resolveArticle(String idStr, List<Article> indexedArticles) {
+    private Article resolveArticle(String idStr, List<Article> articles) {
         try {
             int idx = Integer.parseInt(idStr.trim());
-            if (idx >= 1 && idx <= indexedArticles.size()) {
-                return indexedArticles.get(idx - 1);
+            if (idx >= 1 && idx <= articles.size()) {
+                return articles.get(idx - 1);
             }
+            log.warn("AI返回的序号越界: {}, 候选文章数: {}", idx, articles.size());
         } catch (NumberFormatException ignored) {
         }
         return null;
@@ -651,16 +654,17 @@ public class DailyDigestService {
         return digestRepository.findByDigestDate(date);
     }
 
-    public Optional<DailyDigest> getLatestDigest() {
-        return digestRepository.findAll().stream()
-                .max(Comparator.comparing(DailyDigest::getDigestDate))
-                .map(Optional::of)
-                .orElse(Optional.empty());
+    public Optional<DailyDigestRepository.DigestSummary> getLatestDigestSummary() {
+        List<DailyDigestRepository.DigestSummary> list = digestRepository.findAllByOrderByDigestDateDesc(
+                PageRequest.of(0, 1)).getContent();
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }
 
-    public List<DailyDigest> getAllDigests() {
-        return digestRepository.findAll().stream()
-                .sorted(Comparator.comparing(DailyDigest::getDigestDate).reversed())
-                .collect(Collectors.toList());
+    public List<DailyDigestRepository.DigestSummary> getAllDigestSummaries() {
+        return digestRepository.findAllByOrderByDigestDateDesc();
+    }
+
+    public Page<DailyDigestRepository.DigestSummary> getDigestSummariesPaged(int page, int size) {
+        return digestRepository.findAllByOrderByDigestDateDesc(PageRequest.of(page, size));
     }
 }

@@ -1,6 +1,7 @@
 package com.newsfeed.controller;
 
 import com.newsfeed.model.DailyDigest;
+import com.newsfeed.repository.DailyDigestRepository;
 import com.newsfeed.service.DailyDigestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
@@ -22,22 +24,26 @@ public class DigestController {
     private final DailyDigestService digestService;
 
     @GetMapping
-    public String latestDigest(Model model) {
-        List<DailyDigest> digests = digestService.getAllDigests();
-        model.addAttribute("digests", digests);
-        
-        if (!digests.isEmpty()) {
-            model.addAttribute("digest", digests.get(0));
-            model.addAttribute("selectedDate", digests.get(0).getDigestDate());
+    public String latestDigest(@RequestParam(defaultValue = "0") int page, Model model) {
+        var pagedResult = digestService.getDigestSummariesPaged(page, 30);
+        List<DailyDigestRepository.DigestSummary> digestSummaries = pagedResult.getContent();
+        model.addAttribute("digests", digestSummaries);
+        model.addAttribute("currentPage", page);
+        model.addAttribute("totalPages", pagedResult.getTotalPages());
+
+        if (!digestSummaries.isEmpty()) {
+            String latestDate = digestSummaries.get(0).getDigestDate();
+            digestService.getDigestByDate(latestDate).ifPresent(d -> model.addAttribute("digest", d));
+            model.addAttribute("selectedDate", latestDate);
         }
-        
+
         return "digest";
     }
 
     @GetMapping("/{date}")
     public String digestByDate(@PathVariable String date, Model model) {
         digestService.getDigestByDate(date).ifPresent(d -> model.addAttribute("digest", d));
-        model.addAttribute("digests", digestService.getAllDigests());
+        model.addAttribute("digests", digestService.getAllDigestSummaries());
         model.addAttribute("selectedDate", date);
         return "digest";
     }
