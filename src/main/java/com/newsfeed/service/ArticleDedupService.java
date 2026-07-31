@@ -40,22 +40,28 @@ public class ArticleDedupService {
             "\u3010\u3011\uFF08\uFF09\u300A\u300B\u300C\u300D\u300E\u300F\u3008\u3009" +
             "\u2026\u2014\\-|\u00B7~\uFF09]+");
 
-    public List<Article> deduplicate(List<Article> articles) {
-        if (articles.size() <= 1) return articles;
+    public record DedupResult(List<Article> articles, Map<Long, List<String>> clusterLinks) {
+        public DedupResult {
+            clusterLinks = clusterLinks != null ? new HashMap<>(clusterLinks) : new HashMap<>();
+        }
+    }
 
-        List<Article> titleDeduped = deduplicateByTitle(articles);
-        int titleRemoved = articles.size() - titleDeduped.size();
+    public DedupResult deduplicate(List<Article> articles) {
+        if (articles.size() <= 1) return new DedupResult(articles, Map.of());
+
+        DedupResult titleResult = deduplicateByTitle(articles);
+        int titleRemoved = articles.size() - titleResult.articles().size();
         if (titleRemoved > 0) {
-            log.info("标题去重: {} → {} (移除 {} 篇)", articles.size(), titleDeduped.size(), titleRemoved);
+            log.info("标题去重: {} → {} (移除 {} 篇)", articles.size(), titleResult.articles().size(), titleRemoved);
         }
 
-        List<Article> embeddingDeduped = deduplicateByEmbedding(titleDeduped);
-        int embeddingRemoved = titleDeduped.size() - embeddingDeduped.size();
+        DedupResult embeddingResult = deduplicateByEmbedding(titleResult.articles(), titleResult.clusterLinks());
+        int embeddingRemoved = titleResult.articles().size() - embeddingResult.articles().size();
         if (embeddingRemoved > 0) {
-            log.info("语义去重: {} → {} (移除 {} 篇)", titleDeduped.size(), embeddingDeduped.size(), embeddingRemoved);
+            log.info("语义去重: {} → {} (移除 {} 篇)", titleResult.articles().size(), embeddingResult.articles().size(), embeddingRemoved);
         }
 
-        return embeddingDeduped;
+        return embeddingResult;
     }
 
     String normalizeTitle(String title) {
@@ -66,8 +72,10 @@ public class ArticleDedupService {
         return normalized.trim();
     }
 
-    List<Article> deduplicateByTitle(List<Article> articles) {
+    DedupResult deduplicateByTitle(List<Article> articles) {
         Map<String, Article> bestByNormalized = new LinkedHashMap<>();
+        Map<Long, List<String>> clusterLinks = new HashMap<>();
+
         for (Article article : articles) {
             String normalized = normalizeTitle(article.getTitle());
             if (normalized.isEmpty()) {
@@ -78,17 +86,28 @@ public class ArticleDedupService {
             if (existing == null) {
                 bestByNormalized.put(normalized, article);
             } else if (isBetter(article, existing)) {
+                List<String> links = new ArrayList<>();
+                if (existing.getLink() != null) links.add(existing.getLink());
+                List<String> existingLinks = clusterLinks.remove(existing.getId());
+                if (existingLinks != null) links.addAll(existingLinks);
+                if (!links.isEmpty()) {
+                    clusterLinks.computeIfAbsent(article.getId(), k -> new ArrayList<>()).addAll(links);
+                }
                 bestByNormalized.put(normalized, article);
+            } else {
+                if (article.getLink() != null) {
+                    clusterLinks.computeIfAbsent(existing.getId(), k -> new ArrayList<>()).add(article.getLink());
+                }
             }
         }
-        return new ArrayList<>(bestByNormalized.values());
+        return new DedupResult(new ArrayList<>(bestByNormalized.values()), clusterLinks);
     }
 
-    List<Article> deduplicateByEmbedding(List<Article> articles) {
-        if (articles.size() <= 1) return articles;
+    DedupResult deduplicateByEmbedding(List<Article> articles, Map<Long, List<String>> titleClusterLinks) {
+        if (articles.size() <= 1) return new DedupResult(articles, titleClusterLinks);
         if (aiConfig.getKey() == null || aiConfig.getKey().isBlank()) {
             log.info("AI未配置，跳过embedding去重");
-            return articles;
+            return new DedupResult(articles, titleClusterLinks);
         }
 
         try {
@@ -103,17 +122,17 @@ public class ArticleDedupService {
             List<float[]> embeddings = batchGetEmbeddings(inputs);
             if (embeddings == null || embeddings.size() != articles.size()) {
                 log.warn("Embedding获取失败或不完整，降级使用标题去重结果");
-                return articles;
+                return new DedupResult(articles, titleClusterLinks);
             }
 
-            return clusterAndSelect(articles, embeddings);
+            return clusterAndSelect(articles, embeddings, titleClusterLinks);
         } catch (Exception e) {
             log.warn("Embedding去重失败，降级使用标题去重结果: {}", e.getMessage());
-            return articles;
+            return new DedupResult(articles, titleClusterLinks);
         }
     }
 
-    private List<Article> clusterAndSelect(List<Article> articles, List<float[]> embeddings) {
+    private DedupResult clusterAndSelect(List<Article> articles, List<float[]> embeddings, Map<Long, List<String>> titleClusterLinks) {
         List<List<Integer>> clusters = new ArrayList<>();
         List<float[]> centers = new ArrayList<>();
 
@@ -143,15 +162,32 @@ public class ArticleDedupService {
 
         log.info("Embedding聚类: {} 篇文章 → {} 个事件簇", articles.size(), clusters.size());
 
+        Map<Long, List<String>> clusterLinks = new HashMap<>();
         List<Article> result = new ArrayList<>();
         for (List<Integer> cluster : clusters) {
             Article best = cluster.stream()
                     .map(articles::get)
                     .min((a1, a2) -> isBetter(a1, a2) ? -1 : 1)
                     .orElse(null);
-            if (best != null) result.add(best);
+            if (best == null) continue;
+            result.add(best);
+
+            List<String> links = new ArrayList<>();
+            List<String> bestTitleLinks = titleClusterLinks.get(best.getId());
+            if (bestTitleLinks != null) links.addAll(bestTitleLinks);
+
+            for (int idx : cluster) {
+                Article a = articles.get(idx);
+                if (a.getId().equals(best.getId())) continue;
+                if (a.getLink() != null) links.add(a.getLink());
+                List<String> memberTitleLinks = titleClusterLinks.get(a.getId());
+                if (memberTitleLinks != null) links.addAll(memberTitleLinks);
+            }
+            if (!links.isEmpty()) {
+                clusterLinks.put(best.getId(), links);
+            }
         }
-        return result;
+        return new DedupResult(result, clusterLinks);
     }
 
     private List<float[]> batchGetEmbeddings(List<String> inputs) {

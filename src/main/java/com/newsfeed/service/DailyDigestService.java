@@ -139,11 +139,13 @@ public class DailyDigestService {
                     continue;
                 }
                 // P1+P2 去重
-                List<Article> deduped = articleDedupService.deduplicate(articles);
+                ArticleDedupService.DedupResult dedupResult = articleDedupService.deduplicate(articles);
+                List<Article> deduped = dedupResult.articles();
+                Map<Long, List<String>> clusterLinks = dedupResult.clusterLinks();
                 Map<Long, Article> articleMap = deduped.stream()
                         .collect(Collectors.toMap(Article::getId, a -> a, (a, b) -> a));
                 log.info("AI筛选合并 {} 分类: {} → {} 篇（去重后）", category, articles.size(), deduped.size());
-                List<DigestItem> items = selectAndMergeWithAI(category, deduped, articleMap);
+                List<DigestItem> items = selectAndMergeWithAI(category, deduped, articleMap, clusterLinks);
                 finalItems.put(category, items);
                 log.info("{} 分类最终: {} 条新闻", category, items.size());
             }
@@ -159,11 +161,13 @@ public class DailyDigestService {
 
     // ========== AI筛选+合并 ==========
 
-    private List<DigestItem> selectAndMergeWithAI(String category, List<Article> articles, Map<Long, Article> articleMap) {
+    private List<DigestItem> selectAndMergeWithAI(String category, List<Article> articles,
+                                                   Map<Long, Article> articleMap,
+                                                   Map<Long, List<String>> clusterLinks) {
         if (articles.isEmpty()) return Collections.emptyList();
         if (aiConfig.getKey() == null || aiConfig.getKey().isBlank()) {
             log.warn("AI未配置，直接使用文章摘要");
-            return buildFallbackItems(articles);
+            return buildFallbackItems(articles, clusterLinks);
         }
 
         try {
@@ -236,7 +240,7 @@ public class DailyDigestService {
                 if (content != null && !content.isEmpty()) {
                     List<DigestItem> items = parseDigestItems(content);
                     if (!items.isEmpty()) {
-                        items = resolveIdsToLinks(items, articleMap);
+                        items = resolveIdsToLinks(items, articleMap, clusterLinks);
                         items = deduplicateAcrossItems(items);
                         return items;
                     }
@@ -251,28 +255,62 @@ public class DailyDigestService {
             log.warn("AI筛选失败({}): {}", category, e.getMessage());
         }
 
-        return buildFallbackItems(articles);
+        return buildFallbackItems(articles, clusterLinks);
     }
 
-    private List<DigestItem> resolveIdsToLinks(List<DigestItem> items, Map<Long, Article> articleMap) {
+    private List<DigestItem> resolveIdsToLinks(List<DigestItem> items, Map<Long, Article> articleMap,
+                                               Map<Long, List<String>> clusterLinks) {
+        Map<String, Article> urlToArticle = new HashMap<>();
+        for (Article a : articleMap.values()) {
+            if (a.getLink() != null) {
+                urlToArticle.put(a.getLink(), a);
+            }
+        }
+
         List<DigestItem> result = new ArrayList<>();
         for (DigestItem item : items) {
             List<String> links = new ArrayList<>();
+            Set<String> seenLinks = new LinkedHashSet<>();
             for (String idStr : item.links) {
-                try {
-                    Long id = Long.parseLong(idStr);
-                    Article article = articleMap.get(id);
-                    if (article != null && article.getLink() != null) {
-                        links.add(article.getLink());
+                Article article = resolveArticle(idStr, articleMap, urlToArticle);
+                if (article != null && article.getLink() != null) {
+                    seenLinks.add(article.getLink());
+                    List<String> additional = clusterLinks.get(article.getId());
+                    if (additional != null) {
+                        seenLinks.addAll(additional);
                     }
-                } catch (NumberFormatException ignored) {
+                } else {
+                    log.debug("无法解析AI返回的标识: {}", idStr);
                 }
             }
+            links.addAll(seenLinks);
             if (!links.isEmpty()) {
                 result.add(new DigestItem(item.summary, links));
             }
         }
         return result;
+    }
+
+    private Article resolveArticle(String idStr, Map<Long, Article> articleMap, Map<String, Article> urlToArticle) {
+        String trimmed = idStr.trim();
+        if (trimmed.isEmpty()) return null;
+        try {
+            Long id = Long.parseLong(trimmed);
+            return articleMap.get(id);
+        } catch (NumberFormatException ignored) {
+        }
+        Article byUrl = urlToArticle.get(trimmed);
+        if (byUrl != null) return byUrl;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(trimmed);
+        if (m.find()) {
+            try {
+                Long extracted = Long.parseLong(m.group(1));
+                Article byExtracted = articleMap.get(extracted);
+                if (byExtracted != null) return byExtracted;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
     }
 
     private List<DigestItem> deduplicateAcrossItems(List<DigestItem> items) {
@@ -287,10 +325,19 @@ public class DailyDigestService {
         return result;
     }
 
-    private List<DigestItem> buildFallbackItems(List<Article> articles) {
+    private List<DigestItem> buildFallbackItems(List<Article> articles, Map<Long, List<String>> clusterLinks) {
         return articles.stream().limit(OUTPUT_LIMIT)
-                .map(a -> new DigestItem(a.getAiSummary() != null ? a.getAiSummary() : a.getTitle(),
-                        a.getLink() != null ? List.of(a.getLink()) : List.of()))
+                .map(a -> {
+                    List<String> links = new ArrayList<>();
+                    if (a.getLink() != null) {
+                        links.add(a.getLink());
+                        List<String> additional = clusterLinks.get(a.getId());
+                        if (additional != null) links.addAll(additional);
+                    }
+                    return new DigestItem(
+                            a.getAiSummary() != null ? a.getAiSummary() : a.getTitle(),
+                            links);
+                })
                 .collect(Collectors.toList());
     }
 
@@ -309,6 +356,19 @@ public class DailyDigestService {
                 if (summary == null || summary.isBlank()) continue;
                 List<String> ids = new ArrayList<>();
                 JsonNode idsNode = item.get("ids");
+                if (idsNode == null || !idsNode.isArray()) {
+                    idsNode = item.get("links");
+                }
+                if (idsNode == null || !idsNode.isArray()) {
+                    idsNode = item.get("urls");
+                }
+                if (idsNode == null || !idsNode.isArray()) {
+                    JsonNode idNode = item.get("id");
+                    if (idNode != null) {
+                        String idStr = idNode.asText().trim();
+                        if (!idStr.isEmpty()) ids.add(idStr);
+                    }
+                }
                 if (idsNode != null && idsNode.isArray()) {
                     for (JsonNode id : idsNode) {
                         String idStr = id.asText().trim();
