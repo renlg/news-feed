@@ -49,9 +49,11 @@ public class DailyDigestService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    // 候选池大小：国内200条，其他分类100条
-    private static final int DOMESTIC_CANDIDATES = 200;
-    private static final int OTHER_CANDIDATES = 100;
+    // DB查询上限（去重前的原始候选池，保证去重后仍有足够多样性）
+    private static final int DOMESTIC_FETCH_LIMIT = 300;
+    private static final int OTHER_FETCH_LIMIT = 150;
+    // 去重后送入AI的候选条数上限（砍掉70%+输入token）
+    private static final int AI_CANDIDATE_LIMIT = 60;
     // 最低分数线
     private static final int MIN_SCORE = 5;
     // AI最终输出条数
@@ -108,15 +110,15 @@ public class DailyDigestService {
             // 查询各分类的高分文章（分数>5），按分数降序
             Map<String, List<Article>> candidates = new HashMap<>();
             candidates.put("domestic", articleRepository.findHighScoringByCategory("domestic", MIN_SCORE, since, until)
-                    .stream().limit(DOMESTIC_CANDIDATES).collect(Collectors.toList()));
+                    .stream().limit(DOMESTIC_FETCH_LIMIT).collect(Collectors.toList()));
             candidates.put("ai", articleRepository.findHighScoringByCategory("ai", MIN_SCORE, since, until)
-                    .stream().limit(OTHER_CANDIDATES).collect(Collectors.toList()));
+                    .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
             candidates.put("tech", articleRepository.findHighScoringByCategory("tech", MIN_SCORE, since, until)
-                    .stream().limit(OTHER_CANDIDATES).collect(Collectors.toList()));
+                    .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
             candidates.put("japan", articleRepository.findHighScoringByCategory("japan", MIN_SCORE, since, until)
-                    .stream().limit(OTHER_CANDIDATES).collect(Collectors.toList()));
+                    .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
             candidates.put("international", articleRepository.findHighScoringByCategory("international", MIN_SCORE, since, until)
-                    .stream().limit(OTHER_CANDIDATES).collect(Collectors.toList()));
+                    .stream().limit(OTHER_FETCH_LIMIT).collect(Collectors.toList()));
 
             int total = candidates.values().stream().mapToInt(List::size).sum();
             log.info("高分文章候选: domestic={}, ai={}, tech={}, japan={}, international={}, 总计={}",
@@ -142,9 +144,15 @@ public class DailyDigestService {
                 ArticleDedupService.DedupResult dedupResult = articleDedupService.deduplicate(articles);
                 List<Article> deduped = dedupResult.articles();
                 Map<Long, List<String>> clusterLinks = dedupResult.clusterLinks();
+                // 去重后截取 top N，大幅减少送入AI的候选数量以节省token
+                if (deduped.size() > AI_CANDIDATE_LIMIT) {
+                    deduped = deduped.subList(0, AI_CANDIDATE_LIMIT);
+                }
                 Map<Long, Article> articleMap = deduped.stream()
                         .collect(Collectors.toMap(Article::getId, a -> a, (a, b) -> a));
-                log.info("AI筛选合并 {} 分类: {} → {} 篇（去重后）", category, articles.size(), deduped.size());
+                log.info("AI筛选合并 {} 分类: {} → {} 篇（去重后）→ {} 篇（截取top {}）",
+                        category, articles.size(), dedupResult.articles().size(),
+                        deduped.size(), AI_CANDIDATE_LIMIT);
                 List<DigestItem> items = selectAndMergeWithAI(category, deduped, articleMap, clusterLinks);
                 finalItems.put(category, items);
                 log.info("{} 分类最终: {} 条新闻", category, items.size());
