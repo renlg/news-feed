@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -355,10 +355,10 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
     <div class="container">
-        <a class="navbar-brand fw-bold" href="/feeds">
+        <a class="navbar-brand fw-bold" href="/digest">
             <i class="bi bi-rss-fill me-2 text-warning"></i>NewsFeed
         </a>
-        <div class="navbar-nav ms-auto">
+        <div class="navbar-nav ms-auto" sec:authorize="isAuthenticated()">
             <a class="nav-link" href="/feeds">Sources</a>
             <a class="nav-link" href="/search">Search</a>
             <a class="nav-link" href="/tags">Tags</a>
@@ -369,6 +369,13 @@
                     <i class="bi bi-box-arrow-right me-1"></i>Logout
                 </button>
             </form>
+        </div>
+        <div class="navbar-nav ms-auto" sec:authorize="!isAuthenticated()">
+            <a class="nav-link" href="/search">Search</a>
+            <a class="nav-link active" href="/digest">Daily Digest</a>
+            <a class="nav-link" href="/login">
+                <i class="bi bi-box-arrow-in-right me-1"></i>Login
+            </a>
         </div>
     </div>
 </nav>
@@ -394,7 +401,7 @@
                     <span class="hero-weekday" th:if="${digest}" id="weekday-badge"></span>
                 </div>
             </div>
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2" sec:authorize="isAuthenticated()">
                 <button type="button" id="btn-generate" class="btn btn-sm px-3" style="background: var(--digest-accent); color: #fff; border: none; border-radius: 8px;" onclick="triggerGenerate()">
                     <i class="bi bi-arrow-clockwise me-1"></i><span id="generate-btn-text">立即生成</span>
                 </button>
@@ -444,7 +451,7 @@
         <i class="bi bi-inbox"></i>
         <h3>暂无新闻摘要</h3>
         <p>每日新闻摘要将在每天早上 9 点自动生成</p>
-        <p>点击上方「立即生成」按钮可手动触发</p>
+        <p sec:authorize="isAuthenticated()">点击上方「立即生成」按钮可手动触发</p>
     </div>
 
     <!-- Digest Content -->
@@ -697,6 +704,14 @@ function triggerGenerate() {
         .then(() => pollGenerationStatus());
 }
 
+document.addEventListener('DOMContentLoaded', function() {
+    initCategories();
+    setWeekday();
+    updateNavButtons();
+    scrollActivePill();
+});
+</script>
+<script sec:authorize="isAuthenticated()">
 function pollGenerationStatus() {
     const interval = setInterval(() => {
         fetch('/digest/generation-status')
@@ -725,11 +740,6 @@ function pollGenerationStatus() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    initCategories();
-    setWeekday();
-    updateNavButtons();
-    scrollActivePill();
-
     fetch('/digest/generation-status')
         .then(r => r.text())
         .then(status => {
