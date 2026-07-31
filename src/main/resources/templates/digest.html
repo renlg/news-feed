@@ -1,276 +1,693 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>每日新闻摘要 - NewsFeed</title>
-    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="/css/style.css" rel="stylesheet">
     <style>
-        .digest-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
+        :root {
+            --digest-accent: #6c8cff;
+            --digest-accent-soft: rgba(108, 140, 255, 0.12);
+            --digest-card-bg: #212529;
+            --digest-card-hover: #282c31;
+            --digest-border: #2d3238;
+            --digest-text-muted: #8b949e;
         }
-        .digest-header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 10px;
+
+        .digest-hero {
+            background: linear-gradient(135deg, #1a1f3a 0%, #2a1f4a 50%, #1a2a3a 100%);
+            border-radius: 16px;
+            padding: 2.5rem 2rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            overflow: hidden;
         }
-        .digest-header h1 {
+        .digest-hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(108, 140, 255, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .digest-hero h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
             margin: 0;
-            font-size: 2em;
+            letter-spacing: -0.02em;
         }
-        .digest-date {
-            font-size: 1.2em;
-            opacity: 0.9;
-            margin-top: 10px;
+        .digest-hero .hero-date {
+            font-size: 1.1rem;
+            color: var(--digest-text-muted);
+            margin-top: 0.5rem;
         }
-        .digest-nav {
+        .digest-hero .hero-weekday {
+            display: inline-block;
+            background: var(--digest-accent-soft);
+            color: var(--digest-accent);
+            padding: 0.2rem 0.7rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-left: 0.75rem;
+        }
+
+        /* Date Navigation */
+        .date-nav-bar {
+            background: var(--digest-card-bg);
+            border: 1px solid var(--digest-border);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.5rem;
             display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-bottom: 30px;
+            align-items: center;
+            gap: 0.75rem;
             flex-wrap: wrap;
         }
-        .digest-nav a {
-            padding: 8px 16px;
-            background: #f0f0f0;
-            border-radius: 20px;
+        .date-nav-bar .nav-btn {
+            background: transparent;
+            border: 1px solid var(--digest-border);
+            color: #dee2e6;
+            border-radius: 8px;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.85rem;
+            transition: all 0.2s;
             text-decoration: none;
-            color: #333;
-            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
         }
-        .digest-nav a:hover, .digest-nav a.active {
-            background: #667eea;
-            color: white;
+        .date-nav-bar .nav-btn:hover {
+            background: var(--digest-accent-soft);
+            border-color: var(--digest-accent);
+            color: var(--digest-accent);
         }
-        .category-section {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            margin-bottom: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        .date-nav-bar .nav-btn.disabled {
+            opacity: 0.35;
+            pointer-events: none;
         }
-        .category-title {
+        .date-pills-scroll {
+            flex: 1;
+            display: flex;
+            gap: 0.4rem;
+            overflow-x: auto;
+            scrollbar-width: none;
+            padding: 0.2rem 0;
+        }
+        .date-pills-scroll::-webkit-scrollbar { display: none; }
+        .date-pill {
+            background: transparent;
+            border: 1px solid var(--digest-border);
+            color: var(--digest-text-muted);
+            border-radius: 8px;
+            padding: 0.35rem 0.7rem;
+            font-size: 0.8rem;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .date-pill:hover {
+            background: var(--digest-accent-soft);
+            color: var(--digest-accent);
+            border-color: var(--digest-accent);
+        }
+        .date-pill.active {
+            background: var(--digest-accent);
+            color: #fff;
+            border-color: var(--digest-accent);
+            font-weight: 600;
+        }
+
+        /* Category Sections */
+        .category-card {
+            background: var(--digest-card-bg);
+            border: 1px solid var(--digest-border);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .category-card:hover {
+            border-color: #3d4248;
+        }
+        .category-header {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #f0f0f0;
+            padding: 1rem 1.25rem;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s;
+            gap: 0.75rem;
         }
-        .category-icon {
-            width: 40px;
-            height: 40px;
+        .category-header:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        .category-badge {
+            width: 38px;
+            height: 38px;
             border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.5em;
+            font-size: 1.2rem;
+            flex-shrink: 0;
         }
-        .category-icon.ai { background: #e3f2fd; }
-        .category-icon.tech { background: #f3e5f5; }
-        .category-icon.domestic { background: #fff3e0; }
-        .category-icon.japan { background: #e8f5e9; }
-        .category-icon.international { background: #fce4ec; }
-        .category-title h2 {
+        .category-badge.ai { background: linear-gradient(135deg, #1a3a5c, #1a2a4a); }
+        .category-badge.tech { background: linear-gradient(135deg, #2a1a4a, #1a1a3a); }
+        .category-badge.domestic { background: linear-gradient(135deg, #3a2a1a, #2a1a0a); }
+        .category-badge.japan { background: linear-gradient(135deg, #1a3a2a, #0a2a1a); }
+        .category-badge.international { background: linear-gradient(135deg, #3a1a2a, #2a0a1a); }
+
+        .category-label {
+            flex: 1;
+        }
+        .category-label h3 {
             margin: 0;
-            font-size: 1.5em;
+            font-size: 1rem;
+            font-weight: 600;
         }
-        .article-list {
+        .category-label .category-count {
+            font-size: 0.8rem;
+            color: var(--digest-text-muted);
+        }
+        .category-toggle {
+            color: var(--digest-text-muted);
+            transition: transform 0.3s;
+            font-size: 1.1rem;
+        }
+        .category-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        .category-body {
+            padding: 0 1.25rem 1rem;
+        }
+
+        /* Article Items */
+        .digest-article-list {
             list-style: none;
             padding: 0;
             margin: 0;
         }
-        .article-item {
-            padding: 15px 0;
-            border-bottom: 1px solid #f0f0f0;
-        }
-        .article-item:last-child {
-            border-bottom: none;
-        }
-        .article-title {
-            font-size: 1.1em;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .article-title a {
-            color: #333;
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        .article-title a:hover {
-            color: #667eea;
-        }
-        .article-summary {
-            color: #666;
-            font-size: 0.95em;
-            line-height: 1.6;
-        }
-        .no-digest {
-            text-align: center;
-            padding: 60px 20px;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .no-digest h2 {
-            color: #666;
-            margin-bottom: 10px;
-        }
-        .no-digest p {
-            color: #999;
-        }
-        .category-content {
-            line-height: 1.8;
-        }
-        .digest-article-list {
-            padding-left: 28px;
-            margin: 0;
-            counter-reset: item;
-            list-style: none;
-        }
         .digest-article-list li {
-            margin-bottom: 14px;
             position: relative;
-            padding-left: 8px;
-            line-height: 1.7;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.5rem;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid transparent;
+            border-radius: 8px;
+            line-height: 1.65;
+            transition: all 0.2s;
         }
-        .digest-article-list li:last-child {
-            margin-bottom: 0;
+        .digest-article-list li:hover {
+            background: rgba(108, 140, 255, 0.04);
+            border-color: rgba(108, 140, 255, 0.15);
         }
         .digest-article-list li::before {
-            content: counter(item) ".";
-            counter-increment: item;
+            content: attr(data-index);
             position: absolute;
-            left: -28px;
-            color: #667eea;
+            left: -0.2rem;
+            top: 0.85rem;
+            width: 22px;
+            height: 22px;
+            background: var(--digest-accent-soft);
+            color: var(--digest-accent);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
             font-weight: 700;
-            font-size: 1.05em;
+        }
+        .digest-article-list li {
+            padding-left: 2.5rem;
         }
         .article-summary-text {
-            color: #333;
-            font-size: 0.98em;
+            color: #c9d1d9;
+            font-size: 0.92rem;
         }
         .article-source-link {
-            color: #667eea;
+            color: var(--digest-accent);
             text-decoration: none;
-            font-size: 0.9em;
+            font-size: 0.82rem;
             white-space: nowrap;
+            opacity: 0.8;
+            transition: opacity 0.15s;
         }
         .article-source-link:hover {
+            opacity: 1;
             text-decoration: underline;
         }
+
+        /* Show more button */
+        .show-more-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            background: transparent;
+            border: 1px dashed var(--digest-border);
+            color: var(--digest-text-muted);
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            justify-content: center;
+            margin-top: 0.25rem;
+        }
+        .show-more-btn:hover {
+            border-color: var(--digest-accent);
+            color: var(--digest-accent);
+            background: var(--digest-accent-soft);
+        }
+
+        /* Generating Status */
+        .generating-overlay {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+        .generating-overlay .spinner-border {
+            width: 2.5rem;
+            height: 2.5rem;
+            color: var(--digest-accent);
+        }
+        .generating-overlay p {
+            color: var(--digest-text-muted);
+            margin-top: 1rem;
+        }
+
+        /* Empty state */
+        .no-digest-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: var(--digest-card-bg);
+            border: 1px solid var(--digest-border);
+            border-radius: 12px;
+        }
+        .no-digest-state i {
+            font-size: 3rem;
+            color: var(--digest-text-muted);
+            opacity: 0.5;
+        }
+        .no-digest-state h3 {
+            margin-top: 1rem;
+            color: #c9d1d9;
+        }
+        .no-digest-state p {
+            color: var(--digest-text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Stats bar */
+        .digest-stats-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .stat-chip {
+            background: var(--digest-card-bg);
+            border: 1px solid var(--digest-border);
+            border-radius: 10px;
+            padding: 0.6rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            flex: 1;
+            min-width: 120px;
+        }
+        .stat-chip .stat-num {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--digest-accent);
+        }
+        .stat-chip .stat-label {
+            color: var(--digest-text-muted);
+            font-size: 0.78rem;
+        }
+
+        /* Responsive */
         @media (max-width: 768px) {
-            .digest-container {
-                padding: 10px;
+            .digest-hero {
+                padding: 1.5rem 1.25rem;
+                border-radius: 12px;
             }
-            .category-section {
-                padding: 15px;
+            .digest-hero h1 { font-size: 1.3rem; }
+            .date-nav-bar {
+                padding: 0.5rem 0.75rem;
             }
-            .digest-header h1 {
-                font-size: 1.5em;
-            }
+            .category-body { padding: 0 0.75rem 0.75rem; }
+            .digest-article-list li { padding: 0.7rem 0.75rem 0.7rem 2.2rem; }
+            .digest-stat-bar { gap: 0.5rem; }
+            .stat-chip { padding: 0.5rem 0.75rem; }
         }
     </style>
 </head>
 <body>
-    <header>
-        <nav>
-            <a th:href="@{/feeds}">订阅源</a>
-            <a th:href="@{/search}">搜索</a>
-            <a th:href="@{/tags}">标签</a>
-            <a th:href="@{/digest}" class="active">每日摘要</a>
-            <a th:href="@{/reports}">报表</a>
-        </nav>
-    </header>
-
-    <div class="digest-container">
-        <div th:if="${successMsg}" class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="bi bi-check-circle me-2"></i><span th:text="${successMsg}"></span>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        <div th:if="${errorMsg}" class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="bi bi-exclamation-triangle me-2"></i><span th:text="${errorMsg}"></span>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-
-        <div class="digest-header">
-            <h1>📰 每日新闻摘要</h1>
-            <div class="digest-date" th:if="${digest}" th:text="${digest.digestDate}">2024-01-01</div>
-            <form th:action="@{/digest/generate}" method="post" style="margin-top: 15px;">
-                <button type="submit" class="btn btn-light btn-sm">
-                    <i class="bi bi-arrow-clockwise me-1"></i>立即生成
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/feeds">
+            <i class="bi bi-rss-fill me-2 text-warning"></i>NewsFeed
+        </a>
+        <div class="navbar-nav ms-auto">
+            <a class="nav-link" href="/feeds">Sources</a>
+            <a class="nav-link" href="/search">Search</a>
+            <a class="nav-link" href="/tags">Tags</a>
+            <a class="nav-link active" href="/digest">Daily Digest</a>
+            <a class="nav-link" href="/reports">Reports</a>
+            <form th:action="@{/logout}" method="post" class="d-inline">
+                <button type="submit" class="btn btn-link nav-link">
+                    <i class="bi bi-box-arrow-right me-1"></i>Logout
                 </button>
             </form>
         </div>
+    </div>
+</nav>
 
-        <div class="digest-nav" th:if="${!digests.isEmpty()}">
-            <a th:each="d : ${digests}" 
-               th:href="@{/digest/{date}(date=${d.digestDate})}"
-               th:class="${selectedDate != null && selectedDate == d.digestDate} ? 'active' : ''"
-               th:text="${d.digestDate}">2024-01-01</a>
-        </div>
+<div class="container py-4" style="max-width: 960px;">
+    <!-- Flash Messages -->
+    <div th:if="${successMsg}" class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-2"></i><span th:text="${successMsg}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    <div th:if="${errorMsg}" class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i><span th:text="${errorMsg}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
 
-        <div th:if="${digest == null}" class="no-digest">
-            <h2>暂无新闻摘要</h2>
-            <p>每日新闻摘要将在每天早上 9 点自动生成</p>
-            <p>请确保已配置 AI API 密钥以获得最佳分类效果</p>
-        </div>
-
-        <div th:if="${digest != null}">
-            <!-- AI 新闻 -->
-            <div class="category-section">
-                <div class="category-title">
-                    <div class="category-icon ai">🤖</div>
-                    <h2>AI 动态</h2>
+    <!-- Hero Header -->
+    <div class="digest-hero">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <h1><i class="bi bi-newspaper me-2" style="color: var(--digest-accent);"></i>每日新闻摘要</h1>
+                <div class="hero-date" th:if="${digest}">
+                    <span th:text="${digest.digestDate}">2024-01-01</span>
+                    <span class="hero-weekday" th:if="${digest}" id="weekday-badge"></span>
                 </div>
-                <div class="category-content" th:utext="${digest.aiCategory}">暂无内容</div>
             </div>
-
-            <!-- 科技新闻 -->
-            <div class="category-section">
-                <div class="category-title">
-                    <div class="category-icon tech">💻</div>
-                    <h2>科技前沿</h2>
-                </div>
-                <div class="category-content" th:utext="${digest.techCategory}">暂无内容</div>
-            </div>
-
-            <!-- 国内热点 -->
-            <div class="category-section">
-                <div class="category-title">
-                    <div class="category-icon domestic">🇨🇳</div>
-                    <h2>国内热点</h2>
-                </div>
-                <div class="category-content" th:utext="${digest.domesticCategory}">暂无内容</div>
-            </div>
-
-            <!-- 日本新闻 -->
-            <div class="category-section">
-                <div class="category-title">
-                    <div class="category-icon japan">🇯🇵</div>
-                    <h2>日本新闻</h2>
-                </div>
-                <div class="category-content" th:utext="${digest.japanCategory}">暂无内容</div>
-            </div>
-
-            <!-- 国际新闻 -->
-            <div class="category-section">
-                <div class="category-title">
-                    <div class="category-icon international">🌍</div>
-                    <h2>国际要闻</h2>
-                </div>
-                <div class="category-content" th:utext="${digest.internationalCategory}">暂无内容</div>
+            <div class="d-flex gap-2">
+                <form th:action="@{/digest/generate}" method="post">
+                    <button type="submit" class="btn btn-sm px-3" style="background: var(--digest-accent); color: #fff; border: none; border-radius: 8px;">
+                        <i class="bi bi-arrow-clockwise me-1"></i>立即生成
+                    </button>
+                </form>
+                <form th:if="${digest != null}" th:action="@{/digest/delete/{date}(date=${digest.digestDate})}" method="post"
+                      onsubmit="return confirm('确定删除此日期的摘要？')">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" style="border-radius: 8px;">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </form>
             </div>
         </div>
     </div>
 
-    <footer>
-        <p>NewsFeed - 新闻聚合阅读器</p>
-    </footer>
+    <!-- Date Navigation -->
+    <div th:if="${!digests.isEmpty()}" class="date-nav-bar">
+        <button class="nav-btn" id="btn-prev" onclick="navigateDate(-1)">
+            <i class="bi bi-chevron-left"></i> 前一天
+        </button>
+
+        <div class="date-pills-scroll" id="date-pills">
+            <a th:each="d : ${digests}"
+               th:href="@{/digest/{date}(date=${d.digestDate})}"
+               th:class="${selectedDate != null && selectedDate == d.digestDate} ? 'date-pill active' : 'date-pill'"
+               th:text="${d.digestDate}"
+               th:attr="data-date=${d.digestDate}">2024-01-01</a>
+        </div>
+
+        <button class="nav-btn" id="btn-next" onclick="navigateDate(1)">
+            后一天 <i class="bi bi-chevron-right"></i>
+        </button>
+
+        <div class="dropdown" th:if="${digests.size() > 7}">
+            <button class="nav-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-calendar3"></i> 选择日期
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" style="max-height: 300px; overflow-y: auto;">
+                <li th:each="d : ${digests}">
+                    <a class="dropdown-item" th:href="@{/digest/{date}(date=${d.digestDate})}"
+                       th:text="${d.digestDate}">2024-01-01</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- No Digest State -->
+    <div th:if="${digest == null}" class="no-digest-state">
+        <i class="bi bi-inbox"></i>
+        <h3>暂无新闻摘要</h3>
+        <p>每日新闻摘要将在每天早上 9 点自动生成</p>
+        <p>点击上方「立即生成」按钮可手动触发</p>
+    </div>
+
+    <!-- Digest Content -->
+    <div th:if="${digest != null}">
+        <!-- Stats Bar -->
+        <div class="digest-stats-bar" id="stats-bar">
+            <div class="stat-chip">
+                <div>
+                    <div class="stat-num" id="stat-total">--</div>
+                    <div class="stat-label">新闻总数</div>
+                </div>
+            </div>
+            <div class="stat-chip">
+                <div>
+                    <div class="stat-num" id="stat-categories">5</div>
+                    <div class="stat-label">分类板块</div>
+                </div>
+            </div>
+            <div class="stat-chip">
+                <div>
+                    <div class="stat-num" style="font-size: 0.9rem;" id="stat-time">--</div>
+                    <div class="stat-label">生成时间</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI 动态 -->
+        <div class="category-card" data-category="ai">
+            <div class="category-header" onclick="toggleCategory('ai')">
+                <div class="category-badge ai">
+                    <i class="bi bi-robot" style="color: #6ea8fe;"></i>
+                </div>
+                <div class="category-label">
+                    <h3>AI 动态</h3>
+                    <span class="category-count" id="count-ai"></span>
+                </div>
+                <i class="bi bi-chevron-down category-toggle" id="toggle-ai"></i>
+            </div>
+            <div class="category-body" id="body-ai">
+                <div th:utext="${digest.aiCategory}">暂无内容</div>
+            </div>
+        </div>
+
+        <!-- 科技前沿 -->
+        <div class="category-card" data-category="tech">
+            <div class="category-header" onclick="toggleCategory('tech')">
+                <div class="category-badge tech">
+                    <i class="bi bi-cpu" style="color: #a78bfa;"></i>
+                </div>
+                <div class="category-label">
+                    <h3>科技前沿</h3>
+                    <span class="category-count" id="count-tech"></span>
+                </div>
+                <i class="bi bi-chevron-down category-toggle" id="toggle-tech"></i>
+            </div>
+            <div class="category-body" id="body-tech">
+                <div th:utext="${digest.techCategory}">暂无内容</div>
+            </div>
+        </div>
+
+        <!-- 国内热点 -->
+        <div class="category-card" data-category="domestic">
+            <div class="category-header" onclick="toggleCategory('domestic')">
+                <div class="category-badge domestic">
+                    <i class="bi bi-geo-alt" style="color: #f59e0b;"></i>
+                </div>
+                <div class="category-label">
+                    <h3>国内热点</h3>
+                    <span class="category-count" id="count-domestic"></span>
+                </div>
+                <i class="bi bi-chevron-down category-toggle" id="toggle-domestic"></i>
+            </div>
+            <div class="category-body" id="body-domestic">
+                <div th:utext="${digest.domesticCategory}">暂无内容</div>
+            </div>
+        </div>
+
+        <!-- 日本新闻 -->
+        <div class="category-card" data-category="japan">
+            <div class="category-header" onclick="toggleCategory('japan')">
+                <div class="category-badge japan">
+                    <i class="bi bi-globe-asia-australia" style="color: #34d399;"></i>
+                </div>
+                <div class="category-label">
+                    <h3>日本新闻</h3>
+                    <span class="category-count" id="count-japan"></span>
+                </div>
+                <i class="bi bi-chevron-down category-toggle" id="toggle-japan"></i>
+            </div>
+            <div class="category-body" id="body-japan">
+                <div th:utext="${digest.japanCategory}">暂无内容</div>
+            </div>
+        </div>
+
+        <!-- 国际要闻 -->
+        <div class="category-card" data-category="international">
+            <div class="category-header" onclick="toggleCategory('international')">
+                <div class="category-badge international">
+                    <i class="bi bi-globe-americas" style="color: #f87171;"></i>
+                </div>
+                <div class="category-label">
+                    <h3>国际要闻</h3>
+                    <span class="category-count" id="count-international"></span>
+                </div>
+                <i class="bi bi-chevron-down category-toggle" id="toggle-international"></i>
+            </div>
+            <div class="category-body" id="body-international">
+                <div th:utext="${digest.internationalCategory}">暂无内容</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer class="text-center py-3" style="color: var(--digest-text-muted); font-size: 0.8rem; border-top: 1px solid var(--digest-border);">
+    <i class="bi bi-rss me-1"></i>NewsFeed - 新闻聚合阅读器
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const DEFAULT_SHOW = 5;
+
+function initCategories() {
+    const categories = ['ai', 'tech', 'domestic', 'japan', 'international'];
+    let totalItems = 0;
+
+    categories.forEach(cat => {
+        const body = document.getElementById('body-' + cat);
+        if (!body) return;
+        const list = body.querySelector('.digest-article-list');
+        if (!list) return;
+
+        const items = list.querySelectorAll('li');
+        const count = items.length;
+        totalItems += count;
+
+        const countEl = document.getElementById('count-' + cat);
+        if (countEl) countEl.textContent = count + ' 条新闻';
+
+        items.forEach((li, idx) => {
+            li.setAttribute('data-index', idx + 1);
+        });
+
+        if (count > DEFAULT_SHOW) {
+            for (let i = DEFAULT_SHOW; i < count; i++) {
+                items[i].style.display = 'none';
+                items[i].classList.add('extra-item');
+            }
+            const btn = document.createElement('button');
+            btn.className = 'show-more-btn';
+            btn.innerHTML = '<i class="bi bi-chevron-down"></i> 展开全部 ' + count + ' 条';
+            btn.onclick = function() { toggleShowMore(cat, btn); };
+            list.parentNode.insertBefore(btn, list.nextSibling);
+        }
+    });
+
+    const statTotal = document.getElementById('stat-total');
+    if (statTotal) statTotal.textContent = totalItems;
+
+    const statTime = document.getElementById('stat-time');
+    if (statTime) {
+        const dateEl = document.querySelector('.hero-date span');
+        if (dateEl) statTime.textContent = dateEl.textContent;
+    }
+}
+
+function toggleShowMore(cat, btn) {
+    const body = document.getElementById('body-' + cat);
+    const items = body.querySelectorAll('.extra-item');
+    const expanded = btn.dataset.expanded === 'true';
+
+    items.forEach(li => {
+        li.style.display = expanded ? 'none' : '';
+    });
+
+    if (expanded) {
+        btn.innerHTML = '<i class="bi bi-chevron-down"></i> 展开全部 ' + items.length + ' 条';
+        btn.dataset.expanded = 'false';
+    } else {
+        const countEl = document.getElementById('count-' + cat);
+        const total = countEl ? countEl.textContent : '';
+        btn.innerHTML = '<i class="bi bi-chevron-up"></i> 收起';
+        btn.dataset.expanded = 'true';
+    }
+}
+
+function toggleCategory(cat) {
+    const body = document.getElementById('body-' + cat);
+    const toggle = document.getElementById('toggle-' + cat);
+    if (!body) return;
+
+    const isHidden = body.style.display === 'none';
+    body.style.display = isHidden ? '' : 'none';
+    toggle.classList.toggle('collapsed', !isHidden);
+}
+
+function setWeekday() {
+    const dateStr = document.querySelector('.hero-date span');
+    const badge = document.getElementById('weekday-badge');
+    if (!dateStr || !badge) return;
+    const days = ['周日','周一','周二','周三','周四','周五','周六'];
+    try {
+        const d = new Date(dateStr.textContent + 'T00:00:00');
+        badge.textContent = days[d.getDay()];
+    } catch(e) {}
+}
+
+function navigateDate(direction) {
+    const pills = document.querySelectorAll('#date-pills .date-pill');
+    if (!pills.length) return;
+    const dates = Array.from(pills).map(p => p.dataset.date).sort().reverse();
+    const selected = /*[[${selectedDate}]]*/ null;
+    if (!selected) return;
+    const idx = dates.indexOf(selected);
+    const newIdx = idx + direction;
+    if (newIdx >= 0 && newIdx < dates.length) {
+        window.location.href = '/digest/' + dates[newIdx];
+    }
+}
+
+function updateNavButtons() {
+    const pills = document.querySelectorAll('#date-pills .date-pill');
+    if (!pills.length) return;
+    const dates = Array.from(pills).map(p => p.dataset.date).sort().reverse();
+    const selected = /*[[${selectedDate}]]*/ null;
+    if (!selected) return;
+    const idx = dates.indexOf(selected);
+    const prevBtn = document.getElementById('btn-prev');
+    const nextBtn = document.getElementById('btn-next');
+    if (prevBtn) prevBtn.classList.toggle('disabled', idx >= dates.length - 1);
+    if (nextBtn) nextBtn.classList.toggle('disabled', idx <= 0);
+}
+
+function scrollActivePill() {
+    const active = document.querySelector('#date-pills .date-pill.active');
+    if (active) active.scrollIntoView({ inline: 'center', behavior: 'smooth' });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initCategories();
+    setWeekday();
+    updateNavButtons();
+    scrollActivePill();
+});
+</script>
 </body>
 </html>
