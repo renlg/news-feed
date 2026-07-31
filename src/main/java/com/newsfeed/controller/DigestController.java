@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.List;
@@ -44,12 +45,18 @@ public class DigestController {
     @PostMapping("/generate")
     public String generateDigest(RedirectAttributes redirectAttributes) {
         try {
-            digestService.forceGenerateDigest();
-            redirectAttributes.addFlashAttribute("successMsg", "新闻摘要生成成功！");
+            digestService.forceGenerateDigestAsync();
+            redirectAttributes.addFlashAttribute("successMsg", "正在后台生成新闻摘要，请稍后刷新页面查看");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("errorMsg", "生成失败: " + e.getMessage());
         }
         return "redirect:/digest";
+    }
+
+    @GetMapping("/generation-status")
+    @ResponseBody
+    public String generationStatus() {
+        return digestService.getGenerationStatus();
     }
 
     @PostMapping("/delete/{date}")

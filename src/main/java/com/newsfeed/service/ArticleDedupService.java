@@ -17,6 +17,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -31,6 +32,9 @@ public class ArticleDedupService {
     private static final double EMBEDDING_SIMILARITY_THRESHOLD = 0.85;
     private static final double TITLE_SIMILARITY_THRESHOLD = 0.7;
     private static final int EMBEDDING_BATCH_SIZE = 100;
+    private static final int EMBEDDING_INPUT_LIMIT = 100;
+
+    private final ConcurrentHashMap<Long, float[]> embeddingCache = new ConcurrentHashMap<>();
 
     private static final Pattern PREFIX_PATTERN = Pattern.compile(
             "^(独家|快讯|突发|重磅|最新|紧急|速递|关注|热点|焦点|爆料|官方|刚刚|今日|明日|" +
@@ -111,15 +115,63 @@ public class ArticleDedupService {
         }
 
         try {
-            List<String> inputs = articles.stream()
-                    .map(a -> {
-                        String title = a.getTitle() != null ? a.getTitle() : "";
-                        String summary = a.getAiSummary() != null ? a.getAiSummary() : "";
-                        return title + " " + summary;
-                    })
-                    .collect(Collectors.toList());
+            List<String> inputs = new ArrayList<>();
+            List<Long> uncachedIds = new ArrayList<>();
+            List<Article> uncachedArticles = new ArrayList<>();
+            Map<Long, float[]> cachedEmbeddings = new LinkedHashMap<>();
 
-            List<float[]> embeddings = batchGetEmbeddings(inputs);
+            for (Article a : articles) {
+                float[] cached = embeddingCache.get(a.getId());
+                if (cached != null) {
+                    cachedEmbeddings.put(a.getId(), cached);
+                } else {
+                    uncachedIds.add(a.getId());
+                    uncachedArticles.add(a);
+                }
+                String title = a.getTitle() != null ? a.getTitle() : "";
+                String summary = a.getAiSummary() != null ? a.getAiSummary() : "";
+                String input = title + " " + summary;
+                if (input.length() > EMBEDDING_INPUT_LIMIT) {
+                    input = input.substring(0, EMBEDDING_INPUT_LIMIT);
+                }
+                inputs.add(input);
+            }
+
+            List<float[]> embeddings;
+            if (uncachedArticles.isEmpty()) {
+                embeddings = articles.stream()
+                        .map(a -> cachedEmbeddings.get(a.getId()))
+                        .collect(Collectors.toList());
+                log.info("Embedding全部命中缓存: {} 篇", articles.size());
+            } else {
+                List<String> uncachedInputs = new ArrayList<>();
+                for (Article a : uncachedArticles) {
+                    String title = a.getTitle() != null ? a.getTitle() : "";
+                    String summary = a.getAiSummary() != null ? a.getAiSummary() : "";
+                    String input = title + " " + summary;
+                    if (input.length() > EMBEDDING_INPUT_LIMIT) {
+                        input = input.substring(0, EMBEDDING_INPUT_LIMIT);
+                    }
+                    uncachedInputs.add(input);
+                }
+                List<float[]> uncachedEmbeddings = batchGetEmbeddings(uncachedInputs);
+                if (uncachedEmbeddings == null || uncachedEmbeddings.size() != uncachedArticles.size()) {
+                    log.warn("Embedding获取失败或不完整，降级使用标题去重结果");
+                    return new DedupResult(articles, titleClusterLinks);
+                }
+                for (int i = 0; i < uncachedArticles.size(); i++) {
+                    embeddingCache.put(uncachedIds.get(i), uncachedEmbeddings.get(i));
+                    cachedEmbeddings.put(uncachedIds.get(i), uncachedEmbeddings.get(i));
+                }
+                if (!cachedEmbeddings.isEmpty() && uncachedArticles.size() < articles.size()) {
+                    log.info("Embedding缓存命中 {} 篇，新计算 {} 篇",
+                            articles.size() - uncachedArticles.size(), uncachedArticles.size());
+                }
+                embeddings = articles.stream()
+                        .map(a -> cachedEmbeddings.get(a.getId()))
+                        .collect(Collectors.toList());
+            }
+
             if (embeddings == null || embeddings.size() != articles.size()) {
                 log.warn("Embedding获取失败或不完整，降级使用标题去重结果");
                 return new DedupResult(articles, titleClusterLinks);
