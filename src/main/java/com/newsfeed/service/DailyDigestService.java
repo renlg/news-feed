@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,6 +24,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -41,6 +43,7 @@ public class DailyDigestService {
     private final DailyDigestRepository digestRepository;
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ReentrantLock generateLock = new ReentrantLock();
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -57,22 +60,35 @@ public class DailyDigestService {
     public void generateDailyDigest() {
         log.info("开始生成昨日新闻摘要...");
         String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
-        if (digestRepository.existsByDigestDate(yesterday)) {
-            log.info("昨日摘要已存在，跳过");
+        if (!generateLock.tryLock()) {
+            log.info("已有摘要生成任务在执行中，跳过");
             return;
         }
-        doGenerate(yesterday);
+        try {
+            if (digestRepository.existsByDigestDate(yesterday)) {
+                log.info("昨日摘要已存在，跳过");
+                return;
+            }
+            doGenerate(yesterday);
+        } finally {
+            generateLock.unlock();
+        }
     }
 
     // 手动触发生成（强制重新生成前一天的摘要）
     public void forceGenerateDigest() {
         log.info("手动触发生成昨日新闻摘要...");
         String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
-        if (digestRepository.existsByDigestDate(yesterday)) {
-            digestRepository.deleteByDigestDate(yesterday);
-            log.info("已删除昨日的旧摘要记录");
+        generateLock.lock();
+        try {
+            if (digestRepository.existsByDigestDate(yesterday)) {
+                digestRepository.deleteByDigestDate(yesterday);
+                log.info("已删除昨日的旧摘要记录");
+            }
+            doGenerate(yesterday);
+        } finally {
+            generateLock.unlock();
         }
-        doGenerate(yesterday);
     }
 
     // 按日期删除摘要
@@ -141,10 +157,7 @@ public class DailyDigestService {
         if (articles.isEmpty()) return Collections.emptyList();
         if (aiConfig.getKey() == null || aiConfig.getKey().isBlank()) {
             log.warn("AI未配置，直接使用文章摘要");
-            return articles.stream().limit(OUTPUT_LIMIT)
-                    .map(a -> new DigestItem(a.getAiSummary() != null ? a.getAiSummary() : a.getTitle(),
-                            a.getLink() != null ? List.of(a.getLink()) : List.of()))
-                    .collect(Collectors.toList());
+            return buildFallbackItems(articles);
         }
 
         try {
@@ -154,32 +167,44 @@ public class DailyDigestService {
                 String summary = a.getAiSummary() != null ? a.getAiSummary() : "";
                 String link = a.getLink() != null ? a.getLink() : "";
                 articleList.append(String.format("- ID=%d | 标题: %s | 摘要: %s | 链接: %s\n",
-                        a.getId(), escapeJson(title), escapeJson(summary), escapeJson(link)));
+                        a.getId(), title, summary, link));
             }
 
             String categoryName = getCategoryDisplayName(category);
             String systemPrompt = String.format("""
-                    你是一个资深新闻编辑。以下是过去24小时内「%s」类别的高分候选新闻（共%d条）。
-                    请完成以下任务：
-                    1. 从中筛选出最重要、最有价值的新闻（最多%d条）
-                    2. 如果有多篇报道的是同一个事件或高度相似的新闻，请合并成一条（摘要综合各报道内容，链接保留所有来源）
-                    3. 按重要性从高到低排序
+                    你是新闻摘要JSON生成器。你必须且只能输出合法JSON，不得输出任何叙述、解释或思考文字。
 
-                    请返回JSON格式：
-                    {"items": [{"summary": "100字以内的中文摘要", "links": ["链接1", "链接2"]}, ...]}
+                    任务：从以下%d条「%s」类候选新闻中，筛选最多%d条最重要的，合并报道同一事件的多个来源。
 
-                    注意：
-                    - 摘要不超过100个中文字，概括核心事实
-                    - 合并相似新闻时，摘要要综合各报道的信息
-                    - links数组包含所有相关报道的原始链接
-                    - 只返回JSON，不要返回其他内容
-                    """, categoryName, articles.size(), OUTPUT_LIMIT);
+                    输出格式（严格遵守，不得有任何偏差）：
+                    {"items":[{"summary":"50字以内中文摘要","links":["url1","url2"]},{"summary":"...","links":["..."]}]}
+
+                    规则：
+                    - summary不超过50字，概括核心事实
+                    - 同一事件的多篇报道合并为一条，links保留所有来源链接
+                    - 按重要性降序排列
+                    - 直接输出JSON对象，不要用```包裹，不要加任何前缀或后缀文字
+                    """, articles.size(), categoryName, OUTPUT_LIMIT);
 
             String modelName = aiConfig.getModel() != null && !aiConfig.getModel().isBlank()
                     ? aiConfig.getModel() : "gpt-4o-mini";
-            String jsonBody = String.format(
-                    "{\"model\":\"%s\",\"messages\":[{\"role\":\"system\",\"content\":\"%s\"},{\"role\":\"user\",\"content\":\"候选新闻：\\n%s\"}],\"temperature\":0.2,\"max_tokens\":4000}",
-                    modelName, escapeJson(systemPrompt), escapeJson(articleList.toString()));
+
+            ObjectNode requestBody = objectMapper.createObjectNode();
+            requestBody.put("model", modelName);
+            requestBody.put("temperature", 0.2);
+            requestBody.put("max_tokens", 4000);
+            ObjectNode responseFormat = objectMapper.createObjectNode();
+            responseFormat.put("type", "json_object");
+            requestBody.set("response_format", responseFormat);
+            var messages = requestBody.putArray("messages");
+            var sysMsg = messages.addObject();
+            sysMsg.put("role", "system");
+            sysMsg.put("content", systemPrompt);
+            var userMsg = messages.addObject();
+            userMsg.put("role", "user");
+            userMsg.put("content", "候选新闻：\n" + articleList);
+
+            String jsonBody = objectMapper.writeValueAsString(requestBody);
 
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(10))
@@ -204,9 +229,14 @@ public class DailyDigestService {
             if (response.statusCode() == 200) {
                 String content = extractContent(response.body());
                 if (content != null && !content.isEmpty()) {
-                    return parseDigestItems(content);
+                    List<DigestItem> items = parseDigestItems(content);
+                    if (!items.isEmpty()) {
+                        return items;
+                    }
+                    log.warn("AI筛选返回内容无法解析为JSON，回退使用文章摘要");
+                } else {
+                    log.warn("AI筛选返回内容为空");
                 }
-                log.warn("AI筛选返回内容为空");
             } else {
                 log.warn("AI筛选API返回状态 {}: {}", response.statusCode(), response.body());
             }
@@ -214,7 +244,10 @@ public class DailyDigestService {
             log.warn("AI筛选失败({}): {}", category, e.getMessage());
         }
 
-        // AI失败时的降级处理
+        return buildFallbackItems(articles);
+    }
+
+    private List<DigestItem> buildFallbackItems(List<Article> articles) {
         return articles.stream().limit(OUTPUT_LIMIT)
                 .map(a -> new DigestItem(a.getAiSummary() != null ? a.getAiSummary() : a.getTitle(),
                         a.getLink() != null ? List.of(a.getLink()) : List.of()))
@@ -324,14 +357,6 @@ public class DailyDigestService {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
-    }
-
-    private String escapeJson(String s) {
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 
     private String extractContent(String jsonBody) {
