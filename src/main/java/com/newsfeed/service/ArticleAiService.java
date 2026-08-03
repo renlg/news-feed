@@ -36,7 +36,8 @@ import java.util.concurrent.atomic.AtomicLong;
 @Service
 public class ArticleAiService {
 
-    private static final int BATCH_SIZE = 25;
+    // Production responses for eight or more articles can exceed the 4,000-token cap.
+    private static final int BATCH_SIZE = 4;
     private static final int SUMMARY_LIMIT = 300;
     static final int MAX_AI_FAILURES = 3;
     private static final Set<String> AI_CATEGORIES = Set.of(

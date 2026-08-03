@@ -142,7 +142,7 @@ class ArticleAiServiceTest {
     }
 
     @Test
-    void processingUsesBatchesOfTwentyFive() {
+    void processingUsesBatchesOfFour() {
         List<Article> articles = new ArrayList<>();
         for (long id = 1; id <= 26; id++) {
             articles.add(Article.builder().id(id).title("unique " + id).build());
@@ -154,8 +154,9 @@ class ArticleAiServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Article>> batches = ArgumentCaptor.forClass(List.class);
-        verify(service, times(2)).processBatch(batches.capture());
-        assertThat(batches.getAllValues()).extracting(List::size).containsExactly(25, 1);
+        verify(service, times(7)).processBatch(batches.capture());
+        assertThat(batches.getAllValues()).extracting(List::size)
+                .containsExactly(4, 4, 4, 4, 4, 4, 2);
     }
 
     @Test
