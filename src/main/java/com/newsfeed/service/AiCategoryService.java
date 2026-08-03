@@ -1,6 +1,10 @@
 package com.newsfeed.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.newsfeed.config.AiConfig;
+import com.newsfeed.model.Article;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -10,8 +14,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -23,37 +30,64 @@ public class AiCategoryService {
             "社会", "军事", "教育", "健康", "文化", "法治",
             "环保", "农业", "能源"
     );
+    private static final int BATCH_SIZE = 15;
+    private static final int SUMMARY_LIMIT = 300;
 
     private final AiConfig aiConfig;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** Kept for callers that categorize one article; it uses the same batch implementation. */
     public String categorize(String summary, String content) {
-        if (aiConfig.getKey() == null || aiConfig.getKey().isBlank()) {
-            return null;
-        }
-        if (aiConfig.getBaseUrl() == null || aiConfig.getBaseUrl().isBlank()) {
-            return null;
-        }
-        if (summary == null || summary.isBlank()) {
-            return null;
+        Article article = Article.builder().summary(summary).build();
+        return categorize(List.of(article)).get(0);
+    }
+
+    /** Returns categories in the same order as the supplied articles; null means use the RSS category. */
+    public List<String> categorize(List<Article> articles) {
+        List<String> categories = new ArrayList<>(Collections.nCopies(articles.size(), null));
+        if (articles.isEmpty() || !isConfigured()) {
+            return categories;
         }
 
-        String userMessage;
-        if (content != null && !content.isBlank()) {
-            userMessage = "摘要：" + summary + "\n\n正文：" + content;
-        } else {
-            userMessage = summary;
+        for (int from = 0; from < articles.size(); from += BATCH_SIZE) {
+            int to = Math.min(from + BATCH_SIZE, articles.size());
+            List<String> batchCategories = categorizeBatch(articles.subList(from, to));
+            for (int i = 0; i < batchCategories.size(); i++) {
+                categories.set(from + i, batchCategories.get(i));
+            }
         }
+        return categories;
+    }
 
+    private boolean isConfigured() {
+        return aiConfig.getKey() != null && !aiConfig.getKey().isBlank()
+                && aiConfig.getBaseUrl() != null && !aiConfig.getBaseUrl().isBlank();
+    }
+
+    private List<String> categorizeBatch(List<Article> articles) {
+        List<String> categories = new ArrayList<>(Collections.nCopies(articles.size(), null));
         try {
-            String categoryList = String.join("、", CATEGORIES);
-            String systemPrompt = "你是一个新闻分类助手。请根据用户提供的新闻内容，从以下类目中选择最匹配的一个类目，只返回类目名称，不要返回其他内容。类目列表：" + categoryList;
+            StringBuilder articleList = new StringBuilder();
+            for (int i = 0; i < articles.size(); i++) {
+                Article article = articles.get(i);
+                articleList.append(i + 1)
+                        .append(". 标题: ").append(nullToEmpty(article.getTitle()))
+                        .append(" | 摘要: ").append(truncateText(article.getSummary(), SUMMARY_LIMIT))
+                        .append('\n');
+            }
 
-            String modelName = aiConfig.getModel() != null && !aiConfig.getModel().isBlank() ? aiConfig.getModel() : "gpt-4o-mini";
-            String jsonBody = """
-                    {"model":"%s","messages":[{"role":"system","content":"%s"},{"role":"user","content":"%s"}],"temperature":0.1,"max_tokens":500}"""
-                    .formatted(modelName, escapeJson(systemPrompt), escapeJson(userMessage));
+            String systemPrompt = "新闻分类器。为每条新闻从类目中选一个："
+                    + String.join("、", CATEGORIES)
+                    + "。只能输出JSON数组：[{\"id\":1,\"category\":\"科技\"}]。id是新闻编号，不要输出其他文字。";
 
-            HttpClient client = AiConfig.getSharedHttpClient();
+            ObjectNode requestBody = objectMapper.createObjectNode();
+            requestBody.put("model", aiConfig.getModel() != null && !aiConfig.getModel().isBlank()
+                    ? aiConfig.getModel() : "gpt-4o-mini");
+            requestBody.put("temperature", 0.1);
+            requestBody.put("max_tokens", Math.max(100, articles.size() * 20));
+            var messages = requestBody.putArray("messages");
+            messages.addObject().put("role", "system").put("content", systemPrompt);
+            messages.addObject().put("role", "user").put("content", articleList.toString());
 
             String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
             if (baseUrl.endsWith("/v1")) {
@@ -64,54 +98,139 @@ public class AiCategoryService {
                     .timeout(Duration.ofSeconds(30))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + aiConfig.getKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
                     .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
+            HttpResponse<String> response = AiConfig.getSharedHttpClient()
+                    .send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                String body = response.body();
-                String aiResult = extractContent(body);
-                if (aiResult != null) {
-                    aiResult = aiResult.trim();
-                    if (CATEGORIES.contains(aiResult)) {
-                        return aiResult;
-                    }
-                    log.warn("AI returned unrecognized category: {}", aiResult);
+                String content = extractContent(response.body());
+                if (content != null) {
+                    return parseCategories(content, articles.size());
                 }
+                log.warn("AI categorization returned empty content");
             } else {
-                log.warn("AI API returned status {}: {}", response.statusCode(), response.body());
+                log.warn("AI categorization API returned status {}: {}", response.statusCode(), response.body());
             }
         } catch (Exception e) {
-            log.warn("AI categorization failed: {}", e.getMessage());
+            log.warn("AI batch categorization failed: {}", e.getMessage());
         }
-        return null;
+        return categories;
+    }
+
+    private List<String> parseCategories(String content, int articleCount) {
+        List<String> categories = new ArrayList<>(Collections.nCopies(articleCount, null));
+        try {
+            JsonNode items = findItemsArray(stripMarkdownCodeBlock(content));
+            if (items == null || !items.isArray()) {
+                log.warn("Unable to extract category JSON array; using RSS categories");
+                return categories;
+            }
+            for (JsonNode item : items) {
+                String category = item.has("category") ? item.get("category").asText().trim() : "";
+                if (!CATEGORIES.contains(category)) {
+                    continue;
+                }
+                for (String id : extractIds(item)) {
+                    try {
+                        int index = Integer.parseInt(id);
+                        if (index >= 1 && index <= articleCount) {
+                            categories.set(index - 1, category);
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // Tolerate link/url-style output just as the digest parser does.
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("AI category response parsing failed: {}", e.getMessage());
+        }
+        return categories;
+    }
+
+    private List<String> extractIds(JsonNode item) {
+        List<String> ids = new ArrayList<>();
+        for (String field : List.of("ids", "links", "urls")) {
+            JsonNode node = item.get(field);
+            if (node != null && node.isArray()) {
+                node.forEach(value -> ids.add(value.asText().trim()));
+                return ids;
+            }
+        }
+        for (String field : List.of("id", "link", "url")) {
+            JsonNode node = item.get(field);
+            if (node != null && !node.isNull()) {
+                ids.add(node.asText().trim());
+                return ids;
+            }
+        }
+        return ids;
     }
 
     private String extractContent(String jsonBody) {
         try {
-            int choicesIdx = jsonBody.indexOf("\"choices\"");
-            if (choicesIdx < 0) return null;
-            int contentIdx = jsonBody.indexOf("\"content\"", choicesIdx);
-            if (contentIdx < 0) return null;
-            int colonIdx = jsonBody.indexOf(":", contentIdx);
-            if (colonIdx < 0) return null;
-            int quoteStart = jsonBody.indexOf("\"", colonIdx + 1);
-            if (quoteStart < 0) return null;
-            int quoteEnd = jsonBody.indexOf("\"", quoteStart + 1);
-            if (quoteEnd < 0) return null;
-            return jsonBody.substring(quoteStart + 1, quoteEnd);
+            JsonNode choices = objectMapper.readTree(jsonBody).get("choices");
+            if (choices != null && choices.isArray() && !choices.isEmpty()) {
+                JsonNode message = choices.get(0).get("message");
+                if (message != null && message.hasNonNull("content")) {
+                    return message.get("content").asText();
+                }
+            }
         } catch (Exception e) {
-            log.warn("Failed to extract content from AI response: {}", e.getMessage());
-            return null;
+            log.debug("Failed to parse AI response: {}", e.getMessage());
         }
+        return null;
     }
 
-    private String escapeJson(String s) {
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+    private String truncateText(String text, int maxLength) {
+        if (text == null) return "";
+        return text.length() <= maxLength ? text : text.substring(0, maxLength) + "…";
+    }
+
+    private String nullToEmpty(String text) {
+        return text == null ? "" : text;
+    }
+
+    private String stripMarkdownCodeBlock(String content) {
+        Matcher matcher = Pattern.compile("```(?:json|JSON)?\\s*\\n?(.*?)\\n?\\s*```", Pattern.DOTALL)
+                .matcher(content.trim());
+        return matcher.find() ? matcher.group(1).trim() : content.trim();
+    }
+
+    private JsonNode findItemsArray(String content) throws Exception {
+        try {
+            JsonNode node = objectMapper.readTree(content);
+            if (node.isArray()) return node;
+            if (node.isObject()) {
+                for (String field : List.of("items", "categories", "results")) {
+                    if (node.has(field) && node.get(field).isArray()) return node.get(field);
+                }
+                for (JsonNode child : node) if (child.isArray()) return child;
+            }
+        } catch (Exception ignored) {
+            // A model may surround otherwise valid JSON with prose.
+        }
+        int start = content.indexOf('[');
+        if (start < 0) return null;
+        int end = findMatchingBracket(content, start);
+        return end > start ? objectMapper.readTree(content.substring(start, end + 1)) : null;
+    }
+
+    private int findMatchingBracket(String content, int start) {
+        int depth = 0;
+        boolean inString = false;
+        for (int i = start; i < content.length(); i++) {
+            char c = content.charAt(i);
+            if (c == '\\' && inString && i + 1 < content.length()) {
+                i++;
+            } else if (c == '"') {
+                inString = !inString;
+            } else if (!inString && c == '[') {
+                depth++;
+            } else if (!inString && c == ']' && --depth == 0) {
+                return i;
+            }
+        }
+        return -1;
     }
 }

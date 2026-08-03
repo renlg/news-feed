@@ -72,7 +72,8 @@ public class FeedFetchWorker {
                     int skippedOld = totalParsed - articles.size();
 
                     int limit = Math.min(articles.size(), maxArticlesPerFeed);
-                    saved = articleService.saveArticles(articles.subList(0, limit));
+                    saved = articleService.saveArticles(articles.subList(0, limit),
+                            Boolean.TRUE.equals(source.getAiCategorize()));
                     log.info("Feed '{}': parsed {} articles, skipped {} old, saved {} new",
                             source.getName(), totalParsed, skippedOld, saved);
                 }

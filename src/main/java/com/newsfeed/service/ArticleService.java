@@ -9,8 +9,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -18,15 +17,35 @@ import java.util.List;
 public class ArticleService {
 
     private final ArticleRepository articleRepository;
+    private final AiCategoryService aiCategoryService;
 
-    @Transactional
-    public int saveArticles(List<Article> articles) {
+    /**
+     * Persists articles using their unique link, then categorizes only rows that were newly saved.
+     * Saving before the AI call makes the database duplicate check the authority for paid work.
+     */
+    public int saveArticles(List<Article> articles, boolean aiCategorize) {
         int saved = 0;
+        List<Article> uncategorizedNewArticles = new ArrayList<>();
         for (Article article : articles) {
             if (!articleRepository.existsByLink(article.getLink())) {
-                articleRepository.save(article);
+                Article savedArticle = articleRepository.saveAndFlush(article);
                 saved++;
+
+                if (aiCategorize && (savedArticle.getCategory() == null || savedArticle.getCategory().isBlank())) {
+                    uncategorizedNewArticles.add(savedArticle);
+                }
             }
+        }
+
+        if (!uncategorizedNewArticles.isEmpty()) {
+            List<String> categories = aiCategoryService.categorize(uncategorizedNewArticles);
+            for (int i = 0; i < uncategorizedNewArticles.size(); i++) {
+                String category = categories.get(i);
+                if (category != null && !category.isBlank()) {
+                    uncategorizedNewArticles.get(i).setCategory(category);
+                }
+            }
+            articleRepository.saveAll(uncategorizedNewArticles);
         }
         return saved;
     }
