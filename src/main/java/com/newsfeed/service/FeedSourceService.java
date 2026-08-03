@@ -2,6 +2,7 @@ package com.newsfeed.service;
 
 import com.newsfeed.model.FeedSource;
 import com.newsfeed.model.Tag;
+import com.newsfeed.config.CanonicalTime;
 import com.newsfeed.repository.ArticleRepository;
 import com.newsfeed.repository.FeedSourceRepository;
 import com.newsfeed.repository.TagRepository;
@@ -60,7 +61,7 @@ public class FeedSourceService {
     @Transactional
     public void updateLastFetchedAt(Long id) {
         feedSourceRepository.findById(id).ifPresent(source -> {
-            source.setLastFetchedAt(java.time.LocalDateTime.now());
+            source.setLastFetchedAt(CanonicalTime.now());
             feedSourceRepository.save(source);
         });
     }

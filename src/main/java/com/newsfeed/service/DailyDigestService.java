@@ -1,6 +1,7 @@
 package com.newsfeed.service;
 
 import com.newsfeed.config.AiConfig;
+import com.newsfeed.config.CanonicalTime;
 import com.newsfeed.model.Article;
 import com.newsfeed.model.DailyDigest;
 import com.newsfeed.repository.ArticleRepository;
@@ -80,7 +81,7 @@ public class DailyDigestService {
     @Scheduled(cron = "0 0 9 * * ?")
     public void generateDailyDigest() {
         log.info("开始生成昨日新闻摘要...");
-        String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
+        String yesterday = CanonicalTime.today().minusDays(1).format(DATE_FORMATTER);
         if (!generating.compareAndSet(false, true)) {
             log.info("已有摘要生成任务在执行中，跳过");
             return;
@@ -110,7 +111,7 @@ public class DailyDigestService {
     // 返回 true=任务已提交，false=已有任务在执行中
     public boolean forceGenerateDigestAsync() {
         log.info("手动触发异步生成昨日新闻摘要...");
-        String yesterday = LocalDate.now().minusDays(1).format(DATE_FORMATTER);
+        String yesterday = CanonicalTime.today().minusDays(1).format(DATE_FORMATTER);
         if (!generating.compareAndSet(false, true)) {
             log.info("已有摘要生成任务在执行中，跳过");
             return false;
@@ -155,7 +156,7 @@ public class DailyDigestService {
 
     private void doGenerate(String digestDate) {
         LocalDate targetDate = LocalDate.parse(digestDate, DATE_FORMATTER);
-        LocalDateTime until = LocalDateTime.of(targetDate.plusDays(1), LocalTime.of(9, 0));
+        LocalDateTime until = CanonicalTime.at(targetDate.plusDays(1), LocalTime.of(9, 0));
         LocalDateTime since = until.minusHours(24);
 
         // 查询各分类的高分文章（分数>5），按分数降序
@@ -442,7 +443,7 @@ public class DailyDigestService {
                 .rawDomesticArticles("")
                 .rawJapanArticles("")
                 .rawInternationalArticles("")
-                .generatedAt(LocalDateTime.now())
+                .generatedAt(CanonicalTime.now())
                 .build();
     }
 

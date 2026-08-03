@@ -1,6 +1,7 @@
 package com.newsfeed.service;
 
 import com.newsfeed.model.FeedSource;
+import com.newsfeed.config.CanonicalTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -24,7 +25,7 @@ public class FeedFetchService {
     @Scheduled(fixedRate = 60000)
     public void fetchDueFeeds() {
         List<FeedSource> enabledSources = feedSourceService.findEnabled();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = CanonicalTime.now();
 
         for (FeedSource source : enabledSources) {
             if (fetchingSourceIds.contains(source.getId())) {

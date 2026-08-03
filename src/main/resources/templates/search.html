@@ -105,8 +105,7 @@
             <div class="d-flex w-100 justify-content-between">
                 <h5 class="mb-1 text-light" th:text="${article.title}">Article Title</h5>
                 <small class="text-muted text-nowrap ms-3"
-                       th:if="${article.publishedAt}"
-                       th:text="${#temporals.format(article.publishedAt, 'yyyy-MM-dd HH:mm')}">
+                       th:text="${@canonicalTime.format(article.publishedAt != null ? article.publishedAt : article.fetchedAt)}">
                     Date
                 </small>
             </div>

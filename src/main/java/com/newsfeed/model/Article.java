@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 
 import java.time.LocalDateTime;
+import com.newsfeed.config.CanonicalTime;
 
 @Data
 @Entity
@@ -64,7 +65,7 @@ public class Article {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = CanonicalTime.now();
     }
 
     @ManyToOne(fetch = FetchType.LAZY)

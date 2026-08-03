@@ -1,5 +1,6 @@
 package com.newsfeed.service;
 
+import com.newsfeed.config.CanonicalTime;
 import com.newsfeed.config.AiConfig;
 import com.newsfeed.model.Article;
 import com.newsfeed.repository.ArticleRepository;
@@ -78,7 +79,7 @@ public class ArticleAiService {
     public Map<String, Long> getStats() {
         long processed = articleRepository.countProcessedFromAiSources();
         long unprocessed = articleRepository.countUnprocessedFromAiSources();
-        long totalToday = articleRepository.countArticlesSince(java.time.LocalDateTime.now().minusDays(1));
+        long totalToday = articleRepository.countArticlesSince(CanonicalTime.now().minusDays(1));
         return Map.of("processed", processed, "unprocessed", unprocessed, "totalToday", totalToday);
     }
 

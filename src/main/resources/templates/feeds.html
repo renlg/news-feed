@@ -132,7 +132,7 @@
                 <td th:text="${source.fetchIntervalMinutes + ' min'}">15 min</td>
                 <td>
                     <span th:if="${source.lastFetchedAt}"
-                          th:text="${#temporals.format(source.lastFetchedAt, 'yyyy-MM-dd HH:mm')}">
+                          th:text="${@canonicalTime.format(source.lastFetchedAt)}">
                         Never
                     </span>
                     <span th:unless="${source.lastFetchedAt}" class="text-muted">Never</span>

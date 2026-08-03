@@ -2,6 +2,7 @@ package com.newsfeed.service.rss;
 
 import com.newsfeed.model.Article;
 import com.newsfeed.model.FeedSource;
+import com.newsfeed.config.CanonicalTime;
 import com.newsfeed.service.FeedParser;
 import com.rometools.rome.feed.synd.SyndEntry;
 import com.rometools.rome.feed.synd.SyndFeed;
@@ -19,7 +20,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -75,15 +75,17 @@ public class RssFeedParser implements FeedParser {
                         summary = entry.getDescription().getValue();
                     }
 
-                    LocalDateTime publishedAt = LocalDateTime.now();
+                    // ROME normalizes RFC-822/RFC-3339 timestamps (including their offsets) to
+                    // an absolute Date/Instant. Convert that instant to the canonical UTC+8 wall time.
+                    // A missing or unparseable timestamp is kept null; fetchedAt is then the consistent
+                    // fallback. Zone-less feed dates are interpreted by ROME as UTC before this conversion.
+                    LocalDateTime publishedAt = null;
                     Date publishedDate = entry.getPublishedDate();
                     if (publishedDate == null) {
                         publishedDate = entry.getUpdatedDate();
                     }
                     if (publishedDate != null) {
-                        publishedAt = publishedDate.toInstant()
-                                .atZone(ZoneId.systemDefault())
-                                .toLocalDateTime();
+                        publishedAt = CanonicalTime.fromInstant(publishedDate.toInstant());
                     }
 
                     Article article = Article.builder()
@@ -93,7 +95,7 @@ public class RssFeedParser implements FeedParser {
                             .summary(summary)
                             .author(entry.getAuthor())
                             .publishedAt(publishedAt)
-                            .fetchedAt(LocalDateTime.now())
+                            .fetchedAt(CanonicalTime.now())
                             .feedSourceId(source.getId())
                             .build();
 

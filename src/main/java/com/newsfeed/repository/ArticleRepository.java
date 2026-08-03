@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -52,12 +53,15 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     @Query("SELECT DISTINCT a.category FROM Article a WHERE a.category IS NOT NULL ORDER BY a.category")
     List<String> findDistinctCategories();
 
-    List<Article> findByPublishedAtBefore(LocalDateTime cutoff);
+    @Query("SELECT a FROM Article a WHERE COALESCE(a.publishedAt, a.fetchedAt) < :cutoff")
+    List<Article> findByPublishedAtBefore(@Param("cutoff") LocalDateTime cutoff);
 
     long countByPublishedAtBefore(LocalDateTime cutoff);
 
+    @Modifying
     @Transactional
-    void deleteByPublishedAtBefore(LocalDateTime cutoff);
+    @Query("DELETE FROM Article a WHERE COALESCE(a.publishedAt, a.fetchedAt) < :cutoff")
+    void deleteByPublishedAtBefore(@Param("cutoff") LocalDateTime cutoff);
 
     @Query("SELECT a FROM Article a WHERE a.fetchedAt >= :since AND a.fetchedAt < :until ORDER BY a.publishedAt DESC")
     List<Article> findByFetchedAtBetween(@Param("since") LocalDateTime since, @Param("until") LocalDateTime until);

@@ -1,5 +1,6 @@
 package com.newsfeed.service;
 
+import com.newsfeed.config.CanonicalTime;
 import com.newsfeed.model.Article;
 import com.newsfeed.repository.ArticleRepository;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +37,7 @@ public class ArticleRetentionService {
 
     @Scheduled(cron = "0 0 2 * * *")
     public void cleanupOldArticles() {
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(retentionDays);
+        LocalDateTime cutoff = CanonicalTime.now().minusDays(retentionDays);
         List<Article> oldArticles = articleRepository.findByPublishedAtBefore(cutoff);
 
         if (oldArticles.isEmpty()) {

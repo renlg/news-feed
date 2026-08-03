@@ -2,6 +2,7 @@ package com.newsfeed.service;
 
 import com.newsfeed.model.Article;
 import com.newsfeed.model.FeedSource;
+import com.newsfeed.config.CanonicalTime;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
@@ -65,9 +66,13 @@ public class FeedFetchWorker {
 
                 if (!articles.isEmpty()) {
                     int totalParsed = articles.size();
-                    LocalDateTime cutoff = LocalDateTime.now().minusDays(30);
+                    LocalDateTime cutoff = CanonicalTime.now().minusDays(30);
                     articles = articles.stream()
-                            .filter(a -> a.getPublishedAt() != null && a.getPublishedAt().isAfter(cutoff))
+                            .filter(a -> {
+                                LocalDateTime articleTime = a.getPublishedAt() != null
+                                        ? a.getPublishedAt() : a.getFetchedAt();
+                                return articleTime != null && articleTime.isAfter(cutoff);
+                            })
                             .toList();
                     int skippedOld = totalParsed - articles.size();
 
