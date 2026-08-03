@@ -66,13 +66,15 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     @Query("SELECT a FROM Article a WHERE a.fetchedAt >= :since AND a.fetchedAt < :until ORDER BY a.publishedAt DESC")
     List<Article> findByFetchedAtBetween(@Param("since") LocalDateTime since, @Param("until") LocalDateTime until);
 
-    @Query("SELECT a FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
+    @Query("SELECT a FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) " +
+           "AND COALESCE(a.aiFailCount, 0) < 3 " +
+           "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
     List<Article> findUnprocessedArticles();
 
     @Modifying(clearAutomatically = true)
     @Transactional
     @Query("UPDATE Article a SET a.aiProcessed = false, a.aiCategory = NULL, " +
-           "a.importanceScore = NULL, a.aiSummary = NULL " +
+           "a.importanceScore = NULL, a.aiSummary = NULL, a.aiFailCount = 0 " +
            "WHERE a.aiProcessed = true AND a.fetchedAt >= :since AND a.fetchedAt < :until " +
            "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
     int resetAiProcessingBetween(@Param("since") LocalDateTime since,
@@ -87,7 +89,9 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     @Query("SELECT COUNT(a) FROM Article a WHERE a.aiProcessed = true AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
     long countProcessedFromAiSources();
 
-    @Query("SELECT COUNT(a) FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
+    @Query("SELECT COUNT(a) FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) " +
+           "AND COALESCE(a.aiFailCount, 0) < 3 " +
+           "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
     long countUnprocessedFromAiSources();
 
     @Query("SELECT COUNT(a) FROM Article a WHERE a.fetchedAt >= :since")

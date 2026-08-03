@@ -52,6 +52,10 @@ public class Article {
     @Builder.Default
     private Boolean aiProcessed = false;
 
+    @Column(name = "ai_fail_count")
+    @Builder.Default
+    private Integer aiFailCount = 0;
+
     private LocalDateTime publishedAt;
 
     @Column(nullable = false)

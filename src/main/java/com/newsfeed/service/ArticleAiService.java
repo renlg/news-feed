@@ -38,6 +38,7 @@ public class ArticleAiService {
 
     private static final int BATCH_SIZE = 25;
     private static final int SUMMARY_LIMIT = 300;
+    static final int MAX_AI_FAILURES = 3;
     private static final Set<String> AI_CATEGORIES = Set.of(
             "ai", "tech", "domestic", "japan", "international");
     private static final Set<String> CHINESE_CATEGORIES = Set.of(
@@ -142,7 +143,7 @@ public class ArticleAiService {
                 processBatch(batch);
             } catch (Exception e) {
                 log.warn("AI处理批次失败: {}", e.getMessage());
-                markAsProcessed(batch);
+                recordAiFailures(batch, "批次异常: " + e.getMessage());
             }
         }
 
@@ -207,26 +208,27 @@ public class ArticleAiService {
             if (response.statusCode() == 200) {
                 logTokenUsage(response.body(), articles.size());
                 String content = extractContent(response.body());
-                if (content != null && !content.isEmpty()) {
+                if (content != null && !content.isBlank()) {
                     parseAndUpdateArticles(content, articles);
                     log.info("AI处理完成: {} 篇文章", articles.size());
                 } else {
                     log.warn("AI返回内容为空");
-                    markAsProcessed(articles);
+                    recordAiFailures(articles, "AI返回内容为空");
                 }
             } else {
                 log.warn("AI API返回状态 {}: {}", response.statusCode(), response.body());
-                markAsProcessed(articles);
+                recordAiFailures(articles, "AI API状态 " + response.statusCode());
             }
         } catch (Exception e) {
             log.warn("AI处理失败: {}", e.getMessage());
-            markAsProcessed(articles);
+            recordAiFailures(articles, "AI处理异常: " + e.getMessage());
         }
     }
 
     void parseAndUpdateArticles(String content, List<Article> articles) {
         Map<Long, Article> articleMap = new HashMap<>();
         articles.forEach(article -> articleMap.put(article.getId(), article));
+        Set<Long> successfulArticleIds = new java.util.HashSet<>();
         int processed = 0;
 
         try {
@@ -243,7 +245,8 @@ public class ArticleAiService {
                 String summary = textValue(result, "summary");
                 int score = result.path("score").asInt(-1);
                 if (article == null || !AI_CATEGORIES.contains(aiCategory)
-                        || score < 1 || score > 10 || summary == null) {
+                        || score < 1 || score > 10 || summary == null || summary.isBlank()
+                        || !successfulArticleIds.add(id)) {
                     continue;
                 }
 
@@ -257,23 +260,39 @@ public class ArticleAiService {
                     }
                 }
                 article.setAiProcessed(true);
+                article.setAiFailCount(0);
                 processed++;
             }
         } catch (Exception e) {
             log.warn("无法解析AI响应JSON: {}", e.getMessage());
+            recordAiFailures(articles, "AI响应JSON解析失败: " + e.getMessage());
+            log.info("AI处理结果: 0/{} 篇文章成功分类", articles.size());
+            return;
         }
 
-        // Existing failure semantics: do not retry malformed or missing model results forever.
         for (Article article : articles) {
-            article.setAiProcessed(true);
+            if (!successfulArticleIds.contains(article.getId())) {
+                applyAiFailure(article, "AI响应缺少有效文章结果");
+            }
         }
         articleRepository.saveAll(articles);
         log.info("AI处理结果: {}/{} 篇文章成功分类", processed, articles.size());
     }
 
-    private void markAsProcessed(List<Article> articles) {
-        articles.forEach(article -> article.setAiProcessed(true));
+    private void recordAiFailures(List<Article> articles, String reason) {
+        articles.forEach(article -> applyAiFailure(article, reason));
         articleRepository.saveAll(articles);
+    }
+
+    private void applyAiFailure(Article article, String reason) {
+        int previousFailures = article.getAiFailCount() == null ? 0 : article.getAiFailCount();
+        int failures = Math.min(previousFailures + 1, MAX_AI_FAILURES);
+        article.setAiFailCount(failures);
+        article.setAiProcessed(failures >= MAX_AI_FAILURES);
+        if (previousFailures < MAX_AI_FAILURES && failures >= MAX_AI_FAILURES) {
+            log.warn("文章 {} 连续AI处理失败 {} 次，停止重试。最后失败原因: {}",
+                    article.getId(), failures, reason);
+        }
     }
 
     private String extractContent(String responseBody) {
@@ -287,7 +306,7 @@ public class ArticleAiService {
                 return null;
             }
             for (String field : List.of("content", "reasoning_content")) {
-                if (message.hasNonNull(field) && !message.get(field).asText().isEmpty()) {
+                if (message.hasNonNull(field) && !message.get(field).asText().isBlank()) {
                     return message.get(field).asText();
                 }
             }
@@ -353,11 +372,14 @@ public class ArticleAiService {
         List<Article> duplicates = new ArrayList<>();
         for (Map.Entry<Long, List<Article>> entry : duplicatesByRepresentativeId.entrySet()) {
             Article representative = representatives.get(entry.getKey());
-            if (representative == null) {
-                markAsProcessed(entry.getValue());
-                continue;
-            }
             for (Article duplicate : entry.getValue()) {
+                if (representative == null
+                        || !Boolean.TRUE.equals(representative.getAiProcessed())
+                        || failureCount(representative) > 0) {
+                    applyAiFailure(duplicate, "去重代表文章AI处理失败");
+                    duplicates.add(duplicate);
+                    continue;
+                }
                 duplicate.setAiCategory(representative.getAiCategory());
                 duplicate.setImportanceScore(representative.getImportanceScore());
                 duplicate.setAiSummary(representative.getAiSummary());
@@ -367,10 +389,15 @@ public class ArticleAiService {
                     duplicate.setCategory(representative.getCategory());
                 }
                 duplicate.setAiProcessed(true);
+                duplicate.setAiFailCount(0);
                 duplicates.add(duplicate);
             }
         }
         articleRepository.saveAll(duplicates);
+    }
+
+    private int failureCount(Article article) {
+        return article.getAiFailCount() == null ? 0 : article.getAiFailCount();
     }
 
     private String extractJsonObject(String content) {

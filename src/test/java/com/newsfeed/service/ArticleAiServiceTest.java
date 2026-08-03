@@ -91,6 +91,57 @@ class ArticleAiServiceTest {
     }
 
     @Test
+    void parseFailureLeavesArticleUnprocessedForRetry() {
+        Article article = Article.builder().id(1L).title("retry me").build();
+        ArticleAiService service = service(Runnable::run);
+
+        service.parseAndUpdateArticles("{\"articles\":[", List.of(article));
+
+        assertThat(article.getAiProcessed()).isFalse();
+        assertThat(article.getAiFailCount()).isEqualTo(1);
+        verify(articleRepository).saveAll(List.of(article));
+    }
+
+    @Test
+    void givesUpAfterThreeConsecutiveParseFailures() {
+        Article article = Article.builder().id(1L).title("eventually give up").build();
+        ArticleAiService service = service(Runnable::run);
+
+        for (int attempt = 1; attempt <= ArticleAiService.MAX_AI_FAILURES; attempt++) {
+            service.parseAndUpdateArticles("not json", List.of(article));
+            assertThat(article.getAiFailCount()).isEqualTo(attempt);
+            assertThat(article.getAiProcessed())
+                    .isEqualTo(attempt == ArticleAiService.MAX_AI_FAILURES);
+        }
+
+        verify(articleRepository, times(ArticleAiService.MAX_AI_FAILURES))
+                .saveAll(List.of(article));
+    }
+
+    @Test
+    void successfulResultClearsConsecutiveFailureCount() {
+        Article article = Article.builder()
+                .id(1L)
+                .title("recovered")
+                .aiFailCount(2)
+                .build();
+        ArticleAiService service = service(Runnable::run);
+
+        service.parseAndUpdateArticles("""
+                {"articles":[{"id":1,"aiCategory":"tech","chineseCategory":"科技",
+                "score":7,"summary":"valid summary"}]}
+                """, List.of(article));
+
+        assertThat(article.getAiProcessed()).isTrue();
+        assertThat(article.getAiFailCount()).isZero();
+        assertThat(article.getAiCategory()).isEqualTo("tech");
+        assertThat(article.getImportanceScore()).isEqualTo(7);
+        assertThat(article.getAiSummary()).isEqualTo("valid summary");
+        assertThat(article.getCategory()).isEqualTo("科技");
+        verify(articleRepository).saveAll(List.of(article));
+    }
+
+    @Test
     void processingUsesBatchesOfTwentyFive() {
         List<Article> articles = new ArrayList<>();
         for (long id = 1; id <= 26; id++) {
