@@ -69,6 +69,15 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     @Query("SELECT a FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
     List<Article> findUnprocessedArticles();
 
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("UPDATE Article a SET a.aiProcessed = false, a.aiCategory = NULL, " +
+           "a.importanceScore = NULL, a.aiSummary = NULL " +
+           "WHERE a.aiProcessed = true AND a.fetchedAt >= :since AND a.fetchedAt < :until " +
+           "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
+    int resetAiProcessingBetween(@Param("since") LocalDateTime since,
+                                 @Param("until") LocalDateTime until);
+
     @Query("SELECT a FROM Article a WHERE a.aiCategory = :aiCategory AND a.fetchedAt >= :since ORDER BY a.importanceScore DESC")
     List<Article> findByAiCategoryAndFetchedAtAfter(@Param("aiCategory") String aiCategory, @Param("since") LocalDateTime since);
 

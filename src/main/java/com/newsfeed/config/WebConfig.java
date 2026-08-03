@@ -29,6 +29,17 @@ public class WebConfig implements WebMvcConfigurer {
         return executor;
     }
 
+    @Bean(name = "articleAiExecutor")
+    public Executor articleAiExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(1);
+        executor.setThreadNamePrefix("article-ai-");
+        executor.initialize();
+        return executor;
+    }
+
     @Controller
     static class LoginController {
         @GetMapping("/login")

@@ -1,11 +1,14 @@
 package com.newsfeed.service;
 
-import com.newsfeed.config.CanonicalTime;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.newsfeed.config.AiConfig;
+import com.newsfeed.config.CanonicalTime;
 import com.newsfeed.model.Article;
 import com.newsfeed.repository.ArticleRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -14,68 +17,143 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 文章AI处理服务：在抓取时异步对文章进行分类、打分和生成中文摘要
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ArticleAiService {
+
+    private static final int BATCH_SIZE = 25;
+    private static final int SUMMARY_LIMIT = 300;
+    private static final Set<String> AI_CATEGORIES = Set.of(
+            "ai", "tech", "domestic", "japan", "international");
+    private static final Set<String> CHINESE_CATEGORIES = Set.of(
+            "时政", "财经", "科技", "国际", "体育", "娱乐", "社会", "军事",
+            "教育", "健康", "文化", "法治", "环保", "农业", "能源");
+
+    private static final String SYSTEM_PROMPT = """
+            你是新闻编辑。处理输入JSON中的每篇文章，只输出JSON对象：
+            {"articles":[{"id":123,"aiCategory":"ai","chineseCategory":"科技","score":8,"summary":"摘要"}]}
+            aiCategory只能是：ai(AI/大模型/机器学习)、tech(其他科技)、domestic(中国境内或中国主体)、japan(日本)、international(其他国际新闻)。外国主体不能归domestic。
+            chineseCategory只能是：时政、财经、科技、国际、体育、娱乐、社会、军事、教育、健康、文化、法治、环保、农业、能源。
+            score为1-10整数，综合社会影响、时效、知名度、与中国读者的相关性及冲突性；重大政策、灾难、国际冲突为9-10，一般新闻3-6，软文广告1-2。
+            summary用不超过100个中文字客观概括时间、主体和事件。保留每个实际id，不得遗漏，不要输出JSON以外的文字。
+            """;
 
     private final ArticleRepository articleRepository;
     private final AiConfig aiConfig;
+    private final ArticleDedupService articleDedupService;
+    private final ObjectMapper objectMapper;
+    private final Executor articleAiExecutor;
+    private final AtomicBoolean processing = new AtomicBoolean(false);
+    private final AtomicLong cumulativePromptTokens = new AtomicLong();
+    private final AtomicLong cumulativeCompletionTokens = new AtomicLong();
+    private final AtomicLong cumulativeTotalTokens = new AtomicLong();
 
-    /**
-     * 定时检查并处理未处理的 articles（每 2 分钟执行一次）
-     */
+    public ArticleAiService(ArticleRepository articleRepository,
+                            AiConfig aiConfig,
+                            ArticleDedupService articleDedupService,
+                            ObjectMapper objectMapper,
+                            @Qualifier("articleAiExecutor") Executor articleAiExecutor) {
+        this.articleRepository = articleRepository;
+        this.aiConfig = aiConfig;
+        this.articleDedupService = articleDedupService;
+        this.objectMapper = objectMapper;
+        this.articleAiExecutor = articleAiExecutor;
+    }
+
+    /** 定时检查并处理未处理的 articles（每 2 分钟执行一次）。 */
     @Scheduled(fixedDelay = 120000)
     public void processPendingArticles() {
-        if (aiConfig.getKey() == null || aiConfig.getKey().isBlank()) {
+        if (!processing.compareAndSet(false, true)) {
+            log.info("AI处理任务已在执行，跳过本次定时检查");
             return;
+        }
+        try {
+            processPendingArticlesInternal(null);
+        } finally {
+            processing.set(false);
+        }
+    }
+
+    /** 手动触发AI处理，返回本次提交的待处理文章数量；已有任务执行时返回0。 */
+    public int triggerProcessing() {
+        if (!processing.compareAndSet(false, true)) {
+            log.info("AI处理任务已在执行，忽略重复手动触发");
+            return 0;
         }
 
         List<Article> unprocessed = articleRepository.findUnprocessedArticles();
         if (unprocessed.isEmpty()) {
+            processing.set(false);
+            return 0;
+        }
+
+        log.info("手动触发AI处理: {} 篇文章", unprocessed.size());
+        try {
+            articleAiExecutor.execute(() -> {
+                try {
+                    processPendingArticlesInternal(unprocessed);
+                } finally {
+                    processing.set(false);
+                }
+            });
+        } catch (RuntimeException e) {
+            processing.set(false);
+            throw e;
+        }
+        return unprocessed.size();
+    }
+
+    private void processPendingArticlesInternal(List<Article> prefetchedArticles) {
+        if (!isConfigured()) {
             return;
         }
 
-        log.info("发现 {} 篇待AI处理的文章", unprocessed.size());
+        List<Article> unprocessed = prefetchedArticles != null
+                ? prefetchedArticles : articleRepository.findUnprocessedArticles();
+        if (unprocessed.isEmpty()) {
+            return;
+        }
 
-        // 分批处理，每批 10 篇
-        int batchSize = 10;
-        for (int i = 0; i < unprocessed.size(); i += batchSize) {
-            List<Article> batch = unprocessed.subList(i, Math.min(i + batchSize, unprocessed.size()));
+        TitleDeduplication deduplication = deduplicateByTitle(unprocessed);
+        List<Article> articlesToProcess = deduplication.representatives();
+        int duplicateCount = unprocessed.size() - articlesToProcess.size();
+        log.info("发现 {} 篇待AI处理的文章，标题去重后 {} 篇（省略 {} 篇重复文章）",
+                unprocessed.size(), articlesToProcess.size(), duplicateCount);
+
+        for (int i = 0; i < articlesToProcess.size(); i += BATCH_SIZE) {
+            List<Article> batch = articlesToProcess.subList(
+                    i, Math.min(i + BATCH_SIZE, articlesToProcess.size()));
             try {
                 processBatch(batch);
             } catch (Exception e) {
                 log.warn("AI处理批次失败: {}", e.getMessage());
-                // 标记为已处理，避免反复重试
                 markAsProcessed(batch);
             }
         }
+
+        copyResultsToDuplicates(articlesToProcess, deduplication.duplicatesByRepresentativeId());
     }
 
-    /**
-     * 手动触发AI处理，返回待处理文章数量
-     */
-    public int triggerProcessing() {
-        List<Article> unprocessed = articleRepository.findUnprocessedArticles();
-        if (unprocessed.isEmpty()) {
-            return 0;
-        }
-        log.info("手动触发AI处理: {} 篇文章", unprocessed.size());
-        // 异步执行，避免阻塞HTTP请求
-        new Thread(() -> processPendingArticles()).start();
-        return unprocessed.size();
+    private boolean isConfigured() {
+        return aiConfig.getKey() != null && !aiConfig.getKey().isBlank()
+                && aiConfig.getBaseUrl() != null && !aiConfig.getBaseUrl().isBlank();
     }
 
-    /**
-     * 获取AI处理状态统计
-     */
     public Map<String, Long> getStats() {
         long processed = articleRepository.countProcessedFromAiSources();
         long unprocessed = articleRepository.countUnprocessedFromAiSources();
@@ -83,123 +161,51 @@ public class ArticleAiService {
         return Map.of("processed", processed, "unprocessed", unprocessed, "totalToday", totalToday);
     }
 
-    /**
-     * 重置今天AI源文章的处理状态，以便重新处理
-     */
+    /** Resets only AI-enabled articles fetched during today's canonical calendar day. */
     public int resetTodayProcessing() {
-        List<Article> articles = articleRepository.findUnprocessedArticles();
-        // 获取所有AI源的文章（包括已处理的）
-        List<Article> allAiArticles = articleRepository.findAll().stream()
-                .filter(a -> a.getFeedSourceId() != null)
-                .filter(a -> {
-                    var source = articleRepository.findById(a.getId());
-                    return true;
-                })
-                .toList();
-        // 简单方式：将所有aiProcessed=true的文章重置
-        int count = 0;
-        for (Article a : articleRepository.findAll()) {
-            if (Boolean.TRUE.equals(a.getAiProcessed())) {
-                a.setAiProcessed(false);
-                a.setAiCategory(null);
-                a.setImportanceScore(null);
-                a.setAiSummary(null);
-                articleRepository.save(a);
-                count++;
-            }
-        }
-        log.info("已重置 {} 篇文章的AI处理状态", count);
+        LocalDateTime since = CanonicalTime.at(CanonicalTime.today(), LocalTime.MIDNIGHT);
+        LocalDateTime until = since.plusDays(1);
+        int count = articleRepository.resetAiProcessingBetween(since, until);
+        log.info("已重置今天 {} 篇AI源文章的处理状态（{} 至 {}）", count, since, until);
         return count;
     }
 
-    /**
-     * 对一批文章调用AI进行分类、打分、生成摘要
-     */
-    private void processBatch(List<Article> articles) {
+    /** Calls the AI once for a batch to categorize, score, summarize, and set the Chinese category. */
+    void processBatch(List<Article> articles) {
         try {
-            // 构建文章列表
-            StringBuilder articleList = new StringBuilder();
-            for (Article a : articles) {
-                String title = a.getTitle() != null ? a.getTitle() : "";
-                String rssSummary = a.getSummary() != null ? a.getSummary() : "";
-                if (rssSummary.length() > 300) {
-                    rssSummary = rssSummary.substring(0, 300) + "...";
-                }
-                articleList.append(String.format("- ID=%d | 标题: %s | 原文摘要: %s\n",
-                        a.getId(), escapeJson(title), escapeJson(rssSummary)));
+            ObjectNode input = objectMapper.createObjectNode();
+            var inputArticles = input.putArray("articles");
+            for (Article article : articles) {
+                ObjectNode item = inputArticles.addObject();
+                item.put("id", article.getId());
+                item.put("title", nullToEmpty(article.getTitle()));
+                item.put("summary", truncate(article.getSummary(), SUMMARY_LIMIT));
+                item.put("currentCategory", nullToEmpty(article.getCategory()));
             }
 
-            String systemPrompt = """
-                你是一个新闻编辑助手。请对每篇文章进行以下处理：
-                            
-                1. 分类（ai_category）：将文章分到以下5个类别之一：
-                   - ai: AI相关新闻（人工智能、大模型、机器学习、AI产品等）
-                   - tech: 科技新闻（互联网、硬件、软件、产品发布、科技公司动态等）
-                   - domestic: 中国国内新闻（仅限发生在中国境内的新闻，包括中国政策、中国社会事件、中国经济、中国民生等）
-                   - japan: 日本新闻（与日本相关的新闻）
-                   - international: 国际新闻（中国以外的其他国家/地区的新闻、国际关系、全球事件等）
-                            
-                分类规则（重要）：
-                - domestic 仅限中国境内发生的新闻，外国新闻绝对不能分到domestic
-                - 如果新闻涉及美国、欧洲、韩国、东南亚等中国以外的地区，应分到 international
-                - 中国企业的海外动态，如果主体是中国公司，可分到 domestic
-                - 外国公司/政府的新闻，即使与中国经济相关，也应分到 international
-                - ai 和 tech 的区分：ai专注人工智能领域，tech是更广泛的科技领域
-                            
-                2. 重要性评分（score）：1-10分，10分最重要。按以下5个维度综合评估：
-                   - 重要性：事件对社会秩序、公共安全、政策走向或群体利益的影响深度与广度（国家级政策、重大灾难权重最高）
-                   - 时效性：事件发生与发布的时间差，突发且即时报道的价值远高于滞后信息
-                   - 显著性：涉及人物、机构或地点的知名度（政要、名人、地标事件自带高权重）
-                   - 接近性：地理、心理或利益上与目标受众（中国读者）的关联度
-                   - 趣味性/冲突性：内容的反常度、人情味、矛盾张力
-                   评分参考：
-                   - 9-10分：国家级重大政策、突发灾难、重大国际冲突等
-                   - 7-8分：重要行业动态、知名企业/人物动态、有影响力的政策
-                   - 5-6分：有一定影响力的行业/地区新闻
-                   - 3-4分：一般性新闻，影响范围有限
-                   - 1-2分：低价值内容、软文、广告性质
-                            
-                3. 中文摘要（summary）：用中文概括文章核心内容
-                   - 不超过100个中文字
-                   - 概括"什么时间、谁、做了什么"
-                   - 使用简洁客观的新闻语言
-                            
-                请返回JSON格式：
-                {"articles": [{"id": 123, "category": "ai", "score": 8, "summary": "摘要内容"}, ...]}
-                            
-                注意：
-                - 必须使用文章的实际ID
-                - 每篇文章都必须有分类、评分和摘要
-                - 只返回JSON，不要返回其他内容
-                """;
-
-            String userMessage = "请处理以下文章：\n\n" + articleList;
-
-            String modelName = aiConfig.getModel() != null && !aiConfig.getModel().isBlank()
-                    ? aiConfig.getModel() : "gpt-4o-mini";
-
-            String jsonBody = String.format(
-                    "{\"model\":\"%s\",\"messages\":[{\"role\":\"system\",\"content\":\"%s\"},{\"role\":\"user\",\"content\":\"%s\"}],\"temperature\":0.2,\"max_tokens\":4000}",
-                    modelName, escapeJson(systemPrompt), escapeJson(userMessage));
-
-            HttpClient client = AiConfig.getSharedHttpClient();
-
-            String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
-            if (baseUrl.endsWith("/v1")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - 3);
-            }
+            ObjectNode requestBody = objectMapper.createObjectNode();
+            requestBody.put("model", configuredModel());
+            requestBody.put("temperature", 0.2);
+            requestBody.put("max_tokens", 4000);
+            var messages = requestBody.putArray("messages");
+            messages.addObject().put("role", "system").put("content", SYSTEM_PROMPT);
+            messages.addObject().put("role", "user")
+                    .put("content", objectMapper.writeValueAsString(input));
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/v1/chat/completions"))
+                    .uri(URI.create(apiBaseUrl() + "/v1/chat/completions"))
                     .timeout(Duration.ofSeconds(120))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + aiConfig.getKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            objectMapper.writeValueAsString(requestBody)))
                     .build();
 
+            HttpClient client = AiConfig.getSharedHttpClient();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
+                logTokenUsage(response.body(), articles.size());
                 String content = extractContent(response.body());
                 if (content != null && !content.isEmpty()) {
                     parseAndUpdateArticles(content, articles);
@@ -218,141 +224,208 @@ public class ArticleAiService {
         }
     }
 
-    /**
-     * 解析AI返回的结果并更新文章
-     */
-    private void parseAndUpdateArticles(String content, List<Article> articles) {
-        // 提取JSON
-        String jsonStr = extractJsonFromContent(content);
-        if (jsonStr == null) {
-            log.warn("无法从AI响应中提取JSON");
-            markAsProcessed(articles);
-            return;
-        }
-
-        // 解析每篇文章的结果
-        // 格式: {"id": 123, "category": "ai", "score": 8, "summary": "摘要"}
-        Pattern articlePattern = Pattern.compile(
-                "\"id\"\\s*:\\s*(\\d+)\\s*,\\s*\"category\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"score\"\\s*:\\s*(\\d+)\\s*,\\s*\"summary\"\\s*:\\s*\"([^\"]+)\"");
-        Matcher matcher = articlePattern.matcher(jsonStr);
-
+    void parseAndUpdateArticles(String content, List<Article> articles) {
         Map<Long, Article> articleMap = new HashMap<>();
-        for (Article a : articles) {
-            articleMap.put(a.getId(), a);
-        }
-
+        articles.forEach(article -> articleMap.put(article.getId(), article));
         int processed = 0;
-        while (matcher.find()) {
-            try {
-                long id = Long.parseLong(matcher.group(1));
-                String category = matcher.group(2);
-                int score = Integer.parseInt(matcher.group(3));
-                String summary = matcher.group(4);
-                // 处理JSON转义
-                summary = summary.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
 
+        try {
+            JsonNode root = objectMapper.readTree(extractJsonObject(content));
+            JsonNode results = root.get("articles");
+            if (results == null || !results.isArray()) {
+                throw new IllegalArgumentException("响应缺少articles数组");
+            }
+
+            for (JsonNode result : results) {
+                long id = result.path("id").asLong(-1);
                 Article article = articleMap.get(id);
-                if (article != null) {
-                    article.setAiCategory(category);
-                    article.setImportanceScore(score);
-                    article.setAiSummary(summary);
-                    article.setAiProcessed(true);
-                    articleRepository.save(article);
-                    processed++;
+                String aiCategory = textValue(result, "aiCategory", "category");
+                String summary = textValue(result, "summary");
+                int score = result.path("score").asInt(-1);
+                if (article == null || !AI_CATEGORIES.contains(aiCategory)
+                        || score < 1 || score > 10 || summary == null) {
+                    continue;
                 }
-            } catch (Exception e) {
-                log.warn("解析文章结果失败: {}", e.getMessage());
+
+                article.setAiCategory(aiCategory);
+                article.setImportanceScore(score);
+                article.setAiSummary(summary);
+                if (article.getCategory() == null || article.getCategory().isBlank()) {
+                    String chineseCategory = textValue(result, "chineseCategory");
+                    if (CHINESE_CATEGORIES.contains(chineseCategory)) {
+                        article.setCategory(chineseCategory);
+                    }
+                }
+                article.setAiProcessed(true);
+                processed++;
             }
+        } catch (Exception e) {
+            log.warn("无法解析AI响应JSON: {}", e.getMessage());
         }
 
-        // 标记未匹配到的文章为已处理
-        for (Article a : articles) {
-            if (!Boolean.TRUE.equals(a.getAiProcessed())) {
-                a.setAiProcessed(true);
-                articleRepository.save(a);
-            }
+        // Existing failure semantics: do not retry malformed or missing model results forever.
+        for (Article article : articles) {
+            article.setAiProcessed(true);
         }
-
+        articleRepository.saveAll(articles);
         log.info("AI处理结果: {}/{} 篇文章成功分类", processed, articles.size());
     }
 
-    /**
-     * 标记文章为已处理（即使AI失败）
-     */
     private void markAsProcessed(List<Article> articles) {
-        for (Article a : articles) {
-            a.setAiProcessed(true);
-            articleRepository.save(a);
-        }
+        articles.forEach(article -> article.setAiProcessed(true));
+        articleRepository.saveAll(articles);
     }
 
-    private String extractContent(String jsonBody) {
+    private String extractContent(String responseBody) {
         try {
-            int choicesIdx = jsonBody.indexOf("\"choices\"");
-            if (choicesIdx < 0) return null;
-
-            String content = extractField(jsonBody, "\"content\"", choicesIdx);
-            if (content == null || content.isEmpty()) {
-                content = extractField(jsonBody, "\"reasoning_content\"", choicesIdx);
+            JsonNode choices = objectMapper.readTree(responseBody).get("choices");
+            if (choices == null || !choices.isArray() || choices.isEmpty()) {
+                return null;
             }
-            return content;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private String extractField(String jsonBody, String fieldName, int startIdx) {
-        try {
-            int fieldIdx = jsonBody.indexOf(fieldName, startIdx);
-            if (fieldIdx < 0) return null;
-            int colonIdx = jsonBody.indexOf(":", fieldIdx);
-            if (colonIdx < 0) return null;
-            int quoteStart = jsonBody.indexOf("\"", colonIdx + 1);
-            if (quoteStart < 0) return null;
-
-            StringBuilder content = new StringBuilder();
-            int i = quoteStart + 1;
-            while (i < jsonBody.length()) {
-                char c = jsonBody.charAt(i);
-                if (c == '\\' && i + 1 < jsonBody.length()) {
-                    char next = jsonBody.charAt(i + 1);
-                    switch (next) {
-                        case 'n': content.append('\n'); break;
-                        case 'r': content.append('\r'); break;
-                        case 't': content.append('\t'); break;
-                        case '"': content.append('"'); break;
-                        case '\\': content.append('\\'); break;
-                        case '/': content.append('/'); break;
-                        default: content.append(next); break;
-                    }
-                    i += 2;
-                } else if (c == '"') {
-                    break;
-                } else {
-                    content.append(c);
-                    i++;
+            JsonNode message = choices.get(0).get("message");
+            if (message == null) {
+                return null;
+            }
+            for (String field : List.of("content", "reasoning_content")) {
+                if (message.hasNonNull(field) && !message.get(field).asText().isEmpty()) {
+                    return message.get(field).asText();
                 }
             }
-            return content.toString();
         } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private String extractJsonFromContent(String content) {
-        int startIdx = content.indexOf("{");
-        int endIdx = content.lastIndexOf("}");
-        if (startIdx >= 0 && endIdx > startIdx) {
-            return content.substring(startIdx, endIdx + 1);
+            log.debug("无法解析AI API响应: {}", e.getMessage());
         }
         return null;
     }
 
-    private String escapeJson(String s) {
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+    private void logTokenUsage(String responseBody, int batchArticleCount) {
+        try {
+            JsonNode usage = objectMapper.readTree(responseBody).get("usage");
+            if (usage == null || !usage.isObject()) {
+                log.debug("AI响应未包含token usage（批次 {} 篇）", batchArticleCount);
+                return;
+            }
+            long prompt = usage.path("prompt_tokens").asLong(0);
+            long completion = usage.path("completion_tokens").asLong(0);
+            long total = usage.path("total_tokens").asLong(prompt + completion);
+            long cumulativePrompt = cumulativePromptTokens.addAndGet(prompt);
+            long cumulativeCompletion = cumulativeCompletionTokens.addAndGet(completion);
+            long cumulativeTotal = cumulativeTotalTokens.addAndGet(total);
+            log.info("AI token用量（批次 {} 篇）: prompt={}, completion={}, total={}; " +
+                            "进程累计: prompt={}, completion={}, total={}",
+                    batchArticleCount, prompt, completion, total,
+                    cumulativePrompt, cumulativeCompletion, cumulativeTotal);
+        } catch (Exception e) {
+            log.debug("无法读取AI token usage: {}", e.getMessage());
+        }
+    }
+
+    private TitleDeduplication deduplicateByTitle(List<Article> articles) {
+        ArticleDedupService.DedupResult result = articleDedupService.deduplicateByTitle(articles);
+        Map<String, Article> representativeByTitle = new HashMap<>();
+        for (Article representative : result.articles()) {
+            String normalized = articleDedupService.normalizeTitle(representative.getTitle());
+            if (!normalized.isEmpty()) {
+                representativeByTitle.put(normalized, representative);
+            }
+        }
+
+        Map<Long, List<Article>> duplicates = new LinkedHashMap<>();
+        for (Article article : articles) {
+            String normalized = articleDedupService.normalizeTitle(article.getTitle());
+            Article representative = representativeByTitle.get(normalized);
+            if (!normalized.isEmpty() && representative != null
+                    && !representative.getId().equals(article.getId())) {
+                duplicates.computeIfAbsent(representative.getId(), ignored -> new ArrayList<>())
+                        .add(article);
+            }
+        }
+        return new TitleDeduplication(result.articles(), duplicates);
+    }
+
+    private void copyResultsToDuplicates(List<Article> representativeArticles,
+                                         Map<Long, List<Article>> duplicatesByRepresentativeId) {
+        if (duplicatesByRepresentativeId.isEmpty()) {
+            return;
+        }
+        Map<Long, Article> representatives = new HashMap<>();
+        representativeArticles.forEach(article -> representatives.put(article.getId(), article));
+
+        List<Article> duplicates = new ArrayList<>();
+        for (Map.Entry<Long, List<Article>> entry : duplicatesByRepresentativeId.entrySet()) {
+            Article representative = representatives.get(entry.getKey());
+            if (representative == null) {
+                markAsProcessed(entry.getValue());
+                continue;
+            }
+            for (Article duplicate : entry.getValue()) {
+                duplicate.setAiCategory(representative.getAiCategory());
+                duplicate.setImportanceScore(representative.getImportanceScore());
+                duplicate.setAiSummary(representative.getAiSummary());
+                if ((duplicate.getCategory() == null || duplicate.getCategory().isBlank())
+                        && representative.getCategory() != null
+                        && !representative.getCategory().isBlank()) {
+                    duplicate.setCategory(representative.getCategory());
+                }
+                duplicate.setAiProcessed(true);
+                duplicates.add(duplicate);
+            }
+        }
+        articleRepository.saveAll(duplicates);
+    }
+
+    private String extractJsonObject(String content) {
+        int start = content.indexOf('{');
+        if (start < 0) {
+            throw new IllegalArgumentException("响应中没有JSON对象");
+        }
+        int depth = 0;
+        boolean inString = false;
+        for (int i = start; i < content.length(); i++) {
+            char c = content.charAt(i);
+            if (c == '\\' && inString && i + 1 < content.length()) {
+                i++;
+            } else if (c == '"') {
+                inString = !inString;
+            } else if (!inString && c == '{') {
+                depth++;
+            } else if (!inString && c == '}' && --depth == 0) {
+                return content.substring(start, i + 1);
+            }
+        }
+        throw new IllegalArgumentException("JSON对象不完整");
+    }
+
+    private String textValue(JsonNode node, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            if (node.hasNonNull(fieldName) && node.get(fieldName).isTextual()) {
+                return node.get(fieldName).asText();
+            }
+        }
+        return null;
+    }
+
+    private String configuredModel() {
+        return aiConfig.getModel() != null && !aiConfig.getModel().isBlank()
+                ? aiConfig.getModel() : "gpt-4o-mini";
+    }
+
+    private String apiBaseUrl() {
+        String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
+        return baseUrl.endsWith("/v1") ? baseUrl.substring(0, baseUrl.length() - 3) : baseUrl;
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength) + "…";
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private record TitleDeduplication(List<Article> representatives,
+                                      Map<Long, List<Article>> duplicatesByRepresentativeId) {
     }
 }
