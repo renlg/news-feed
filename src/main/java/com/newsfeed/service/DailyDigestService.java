@@ -16,9 +16,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -275,24 +272,9 @@ public class DailyDigestService {
             userMsg.put("role", "user");
             userMsg.put("content", "候选新闻：\n" + articleList);
 
-            String jsonBody = objectMapper.writeValueAsString(requestBody);
-
-            HttpClient client = AiConfig.getSharedHttpClient();
-
-            String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
-            if (baseUrl.endsWith("/v1")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - 3);
-            }
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/v1/chat/completions"))
-                    .timeout(Duration.ofSeconds(120))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + aiConfig.getKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = AiChatClient.send(
+                    aiConfig, objectMapper, requestBody, Duration.ofSeconds(120),
+                    "Daily digest " + category);
 
             if (response.statusCode() == 200) {
                 String content = extractContent(response.body());

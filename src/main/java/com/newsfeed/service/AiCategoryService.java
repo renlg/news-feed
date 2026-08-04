@@ -9,9 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -89,20 +86,9 @@ public class AiCategoryService {
             messages.addObject().put("role", "system").put("content", systemPrompt);
             messages.addObject().put("role", "user").put("content", articleList.toString());
 
-            String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
-            if (baseUrl.endsWith("/v1")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - 3);
-            }
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/v1/chat/completions"))
-                    .timeout(Duration.ofSeconds(30))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + aiConfig.getKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
-                    .build();
-
-            HttpResponse<String> response = AiConfig.getSharedHttpClient()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = AiChatClient.send(
+                    aiConfig, objectMapper, requestBody, Duration.ofSeconds(30),
+                    "AI categorization");
             if (response.statusCode() == 200) {
                 String content = extractContent(response.body());
                 if (content != null) {

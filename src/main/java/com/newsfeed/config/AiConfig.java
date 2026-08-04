@@ -15,6 +15,7 @@ public class AiConfig {
     private String baseUrl;
     private String key;
     private String model;
+    private String fallbackModel;
     private String embeddingModel;
 
     private static final HttpClient SHARED_HTTP_CLIENT = HttpClient.newBuilder()

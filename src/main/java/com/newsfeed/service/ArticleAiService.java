@@ -12,9 +12,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -194,17 +191,9 @@ public class ArticleAiService {
             messages.addObject().put("role", "user")
                     .put("content", objectMapper.writeValueAsString(input));
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(apiBaseUrl() + "/v1/chat/completions"))
-                    .timeout(Duration.ofSeconds(120))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + aiConfig.getKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(
-                            objectMapper.writeValueAsString(requestBody)))
-                    .build();
-
-            HttpClient client = AiConfig.getSharedHttpClient();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = AiChatClient.send(
+                    aiConfig, objectMapper, requestBody, Duration.ofSeconds(120),
+                    "Article AI processing");
 
             if (response.statusCode() == 200) {
                 logTokenUsage(response.body(), articles.size());
@@ -435,11 +424,6 @@ public class ArticleAiService {
     private String configuredModel() {
         return aiConfig.getModel() != null && !aiConfig.getModel().isBlank()
                 ? aiConfig.getModel() : "gpt-4o-mini";
-    }
-
-    private String apiBaseUrl() {
-        String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
-        return baseUrl.endsWith("/v1") ? baseUrl.substring(0, baseUrl.length() - 3) : baseUrl;
     }
 
     private String truncate(String value, int maxLength) {
