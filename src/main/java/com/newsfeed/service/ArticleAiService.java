@@ -243,8 +243,11 @@ public class ArticleAiService {
                 article.setAiCategory(aiCategory);
                 article.setImportanceScore(score);
                 article.setAiSummary(summary);
+                String chineseCategory = textValue(result, "chineseCategory");
+                if (CHINESE_CATEGORIES.contains(chineseCategory)) {
+                    article.setAiCategoryName(chineseCategory);
+                }
                 if (article.getCategory() == null || article.getCategory().isBlank()) {
-                    String chineseCategory = textValue(result, "chineseCategory");
                     if (CHINESE_CATEGORIES.contains(chineseCategory)) {
                         article.setCategory(chineseCategory);
                     }
@@ -371,6 +374,7 @@ public class ArticleAiService {
                     continue;
                 }
                 duplicate.setAiCategory(representative.getAiCategory());
+                duplicate.setAiCategoryName(representative.getAiCategoryName());
                 duplicate.setImportanceScore(representative.getImportanceScore());
                 duplicate.setAiSummary(representative.getAiSummary());
                 if ((duplicate.getCategory() == null || duplicate.getCategory().isBlank())

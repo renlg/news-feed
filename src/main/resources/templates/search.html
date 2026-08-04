@@ -120,6 +120,12 @@
                     <span th:if="${article.feedSource != null}" th:text="${article.feedSource.name}">Source</span>
                     <span th:if="${article.category != null}" class="badge bg-secondary ms-2" th:text="${article.category}">Category</span>
                     <span th:if="${article.category == null}" class="badge bg-secondary ms-2">其他</span>
+                    <span th:if="${article.aiProcessed == true && article.aiCategoryDisplayName != null}"
+                          class="badge bg-primary ms-2"
+                          th:text="${'AI分类 · ' + article.aiCategoryDisplayName}">AI分类 · 科技</span>
+                    <span th:if="${article.aiProcessed == true && article.importanceScore != null}"
+                          class="badge bg-warning text-dark ms-1"
+                          th:text="${article.importanceScore + '分'}">8分</span>
                 </small>
                 <small th:if="${article.author}" class="text-muted">
                     <i class="bi bi-person me-1"></i><span th:text="${article.author}">Author</span>

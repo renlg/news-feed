@@ -73,7 +73,7 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
 
     @Modifying(clearAutomatically = true)
     @Transactional
-    @Query("UPDATE Article a SET a.aiProcessed = false, a.aiCategory = NULL, " +
+    @Query("UPDATE Article a SET a.aiProcessed = false, a.aiCategory = NULL, a.aiCategoryName = NULL, " +
            "a.importanceScore = NULL, a.aiSummary = NULL, a.aiFailCount = 0 " +
            "WHERE a.aiProcessed = true AND a.fetchedAt >= :since AND a.fetchedAt < :until " +
            "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")

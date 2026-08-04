@@ -42,6 +42,9 @@ public class Article {
     @Column(name = "ai_category")
     private String aiCategory;
 
+    @Column(name = "ai_category_name")
+    private String aiCategoryName;
+
     @Column(name = "importance_score")
     private Integer importanceScore;
 
@@ -75,4 +78,22 @@ public class Article {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "feedSourceId", insertable = false, updatable = false)
     private FeedSource feedSource;
+
+    @Transient
+    public String getAiCategoryDisplayName() {
+        if (aiCategoryName != null && !aiCategoryName.isBlank()) {
+            return aiCategoryName;
+        }
+        if (aiCategory == null || aiCategory.isBlank()) {
+            return null;
+        }
+        return switch (aiCategory) {
+            case "ai" -> "AI";
+            case "tech" -> "科技";
+            case "domestic" -> "国内";
+            case "japan" -> "日本";
+            case "international" -> "国际";
+            default -> null;
+        };
+    }
 }

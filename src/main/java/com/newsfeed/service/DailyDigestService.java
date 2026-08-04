@@ -305,10 +305,14 @@ public class DailyDigestService {
         for (DigestItem item : items) {
             List<String> links = new ArrayList<>();
             Set<String> seenLinks = new LinkedHashSet<>();
+            Article metadataArticle = null;
             for (String idStr : item.links) {
                 Article article = resolveArticle(idStr, articles);
                 if (article != null && article.getLink() != null) {
                     seenLinks.add(article.getLink());
+                    if (metadataArticle == null || scoreOf(article) > scoreOf(metadataArticle)) {
+                        metadataArticle = article;
+                    }
                     List<String> additional = clusterLinks.get(article.getId());
                     if (additional != null) {
                         seenLinks.addAll(additional);
@@ -319,7 +323,9 @@ public class DailyDigestService {
             }
             links.addAll(seenLinks);
             if (!links.isEmpty()) {
-                result.add(new DigestItem(item.summary, links));
+                result.add(new DigestItem(item.summary, links,
+                        metadataArticle != null ? metadataArticle.getAiCategoryDisplayName() : null,
+                        metadataArticle != null ? metadataArticle.getImportanceScore() : null));
             }
         }
         return result;
@@ -360,7 +366,9 @@ public class DailyDigestService {
                     }
                     return new DigestItem(
                             a.getAiSummary() != null ? a.getAiSummary() : a.getTitle(),
-                            links);
+                            links,
+                            a.getAiCategoryDisplayName(),
+                            a.getImportanceScore());
                 })
                 .collect(Collectors.toList());
     }
@@ -399,7 +407,7 @@ public class DailyDigestService {
                         if (!idStr.isEmpty()) ids.add(idStr);
                     }
                 }
-                items.add(new DigestItem(summary, ids));
+                items.add(new DigestItem(summary, ids, null, null));
             }
         } catch (Exception e) {
             log.warn("AI筛选响应解析失败: {}, content前300字符: {}",
@@ -443,6 +451,14 @@ public class DailyDigestService {
             }
             sb.append("  <li>\n");
             sb.append(String.format("    <span class=\"article-summary-text\">%s</span>", escapeHtml(summary)));
+            if (item.aiCategoryName != null && !item.aiCategoryName.isBlank()) {
+                sb.append(String.format(" <span class=\"badge bg-primary article-ai-badge\">AI分类 · %s</span>",
+                        escapeHtml(item.aiCategoryName)));
+            }
+            if (item.importanceScore != null) {
+                sb.append(String.format(" <span class=\"badge bg-warning text-dark article-ai-badge\">%d分</span>",
+                        item.importanceScore));
+            }
             if (!item.links.isEmpty()) {
                 if (item.links.size() == 1) {
                     sb.append(String.format(" <a href=\"%s\" target=\"_blank\" class=\"article-source-link\">查看原文</a>",
@@ -467,6 +483,10 @@ public class DailyDigestService {
     private String truncateText(String text, int maxLen) {
         if (text == null || text.length() <= maxLen) return text != null ? text : "";
         return text.substring(0, maxLen) + "…";
+    }
+
+    private int scoreOf(Article article) {
+        return article.getImportanceScore() != null ? article.getImportanceScore() : Integer.MIN_VALUE;
     }
 
     private String getCategoryDisplayName(String category) {
@@ -634,7 +654,8 @@ public class DailyDigestService {
 
     // ========== 数据类 ==========
 
-    private record DigestItem(String summary, List<String> links) {}
+    private record DigestItem(String summary, List<String> links,
+                              String aiCategoryName, Integer importanceScore) {}
 
     // ========== 查询方法 ==========
 

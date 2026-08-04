@@ -82,6 +82,7 @@ class ArticleAiServiceTest {
         assertThat(articles).allSatisfy(article -> {
             assertThat(article.getAiProcessed()).isTrue();
             assertThat(article.getAiCategory()).isEqualTo("tech");
+            assertThat(article.getAiCategoryName()).isEqualTo("科技");
             assertThat(article.getImportanceScore()).isEqualTo(7);
             assertThat(article.getAiSummary()).isEqualTo("line\nquote \"ok\"");
         });
@@ -135,6 +136,7 @@ class ArticleAiServiceTest {
         assertThat(article.getAiProcessed()).isTrue();
         assertThat(article.getAiFailCount()).isZero();
         assertThat(article.getAiCategory()).isEqualTo("tech");
+        assertThat(article.getAiCategoryName()).isEqualTo("科技");
         assertThat(article.getImportanceScore()).isEqualTo(7);
         assertThat(article.getAiSummary()).isEqualTo("valid summary");
         assertThat(article.getCategory()).isEqualTo("科技");
@@ -171,6 +173,7 @@ class ArticleAiServiceTest {
             List<Article> batch = invocation.getArgument(0);
             assertThat(batch).containsExactly(newer);
             newer.setAiCategory("international");
+            newer.setAiCategoryName("国际");
             newer.setImportanceScore(8);
             newer.setAiSummary("shared summary");
             newer.setCategory("国际");
@@ -182,6 +185,7 @@ class ArticleAiServiceTest {
 
         assertThat(older.getAiProcessed()).isTrue();
         assertThat(older.getAiCategory()).isEqualTo("international");
+        assertThat(older.getAiCategoryName()).isEqualTo("国际");
         assertThat(older.getImportanceScore()).isEqualTo(8);
         assertThat(older.getAiSummary()).isEqualTo("shared summary");
         assertThat(older.getCategory()).isEqualTo("国际");
