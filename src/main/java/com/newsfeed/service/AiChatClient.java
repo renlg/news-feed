@@ -29,8 +29,15 @@ final class AiChatClient {
         String fallbackModel = aiConfig.getFallbackModel();
         if (isConfiguredFallback(primaryModel, fallbackModel)
                 && isModelUnavailable(response.statusCode(), response.body())) {
-            log.warn("{} chat API model {} is unavailable (status {}); retrying once with fallback model {}",
-                    operation, primaryModel, response.statusCode(), fallbackModel);
+            if (response.statusCode() == 429) {
+                log.warn("{} chat API call using model {} was rate limited (status 429); "
+                                + "retrying once with fallback model {}",
+                        operation, primaryModel, fallbackModel);
+            } else {
+                log.warn("{} chat API model {} is unavailable (status {}); "
+                                + "retrying once with fallback model {}",
+                        operation, primaryModel, response.statusCode(), fallbackModel);
+            }
             response = sendWithModel(
                     aiConfig, objectMapper, requestBody, timeout, operation, fallbackModel);
         }
@@ -63,6 +70,9 @@ final class AiChatClient {
     }
 
     static boolean isModelUnavailable(int statusCode, String responseBody) {
+        if (statusCode == 429) {
+            return true;
+        }
         if (statusCode < 400 || statusCode >= 500) {
             return false;
         }
