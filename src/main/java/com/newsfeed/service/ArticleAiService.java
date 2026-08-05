@@ -44,12 +44,15 @@ public class ArticleAiService {
             "教育", "健康", "文化", "法治", "环保", "农业", "能源");
 
     private static final String SYSTEM_PROMPT = """
-            你是新闻编辑。处理输入JSON中的每篇文章，只输出JSON对象：
-            {"articles":[{"id":123,"aiCategory":"ai","chineseCategory":"科技","score":8,"summary":"摘要"}]}
+            你是新闻编辑。处理输入JSON中的每篇文章。
+            输出必须且只能是一个合法JSON对象，其中articles是JSON数组；禁止输出说明、注释、Markdown代码围栏或任何前后缀文字。
+            必须严格使用以下紧凑格式（示例）：
+            {"articles":[{"id":123,"aiCategory":"ai","chineseCategory":"科技","score":8,"summary":"某公司回应「自动决策」争议"}]}
+            严格保证JSON语法有效。文本值（尤其summary）中不得出现未转义的ASCII双引号；将文本内所有ASCII双引号替换为全角「」引号（若仍使用ASCII双引号，必须转义为\\\"）。
             aiCategory只能是：ai(AI/大模型/机器学习)、tech(其他科技)、domestic(中国境内或中国主体)、japan(日本)、international(其他国际新闻)。外国主体不能归domestic。
             chineseCategory只能是：时政、财经、科技、国际、体育、娱乐、社会、军事、教育、健康、文化、法治、环保、农业、能源。
             score为1-10整数，综合社会影响、时效、知名度、与中国读者的相关性及冲突性；重大政策、灾难、国际冲突为9-10，一般新闻3-6，软文广告1-2。
-            summary用不超过100个中文字客观概括时间、主体和事件。保留每个实际id，不得遗漏，不要输出JSON以外的文字。
+            summary用不超过100个中文字客观概括时间、主体和事件。保留每个实际id，不得遗漏。再次强调：只输出上述JSON对象，除此之外不得输出任何内容。
             """;
 
     private final ArticleRepository articleRepository;
