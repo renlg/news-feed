@@ -34,6 +34,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
 /**
@@ -664,10 +665,18 @@ public class DailyDigestService {
     }
 
     public List<DailyDigestRepository.DigestSummary> getAllDigestSummaries() {
-        return digestRepository.findAllByOrderByDigestDateDesc();
+        List<DailyDigestRepository.DigestSummary> summaries =
+                new ArrayList<>(digestRepository.findAllByOrderByDigestDateDesc());
+        Collections.reverse(summaries);
+        return summaries;
     }
 
     public Page<DailyDigestRepository.DigestSummary> getDigestSummariesPaged(int page, int size) {
-        return digestRepository.findAllByOrderByDigestDateDesc(PageRequest.of(page, size));
+        PageRequest pageRequest = PageRequest.of(page, size);
+        Page<DailyDigestRepository.DigestSummary> result =
+                digestRepository.findAllByOrderByDigestDateDesc(pageRequest);
+        List<DailyDigestRepository.DigestSummary> summaries = new ArrayList<>(result.getContent());
+        Collections.reverse(summaries);
+        return new PageImpl<>(summaries, pageRequest, result.getTotalElements());
     }
 }

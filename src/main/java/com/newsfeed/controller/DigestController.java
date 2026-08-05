@@ -32,7 +32,7 @@ public class DigestController {
         model.addAttribute("totalPages", pagedResult.getTotalPages());
 
         if (!digestSummaries.isEmpty()) {
-            String latestDate = digestSummaries.get(0).getDigestDate();
+            String latestDate = digestSummaries.get(digestSummaries.size() - 1).getDigestDate();
             digestService.getDigestByDate(latestDate).ifPresent(d -> model.addAttribute("digest", d));
             model.addAttribute("selectedDate", latestDate);
         }

@@ -667,8 +667,9 @@ function setWeekday() {
 function navigateDate(direction) {
     const pills = document.querySelectorAll('#date-pills .date-pill');
     if (!pills.length) return;
-    const dates = Array.from(pills).map(p => p.dataset.date).sort().reverse();
-    const selected = /*[[${selectedDate}]]*/ null;
+    const dates = Array.from(pills).map(p => p.dataset.date);
+    const active = document.querySelector('#date-pills .date-pill.active');
+    const selected = active ? active.dataset.date : null;
     if (!selected) return;
     const idx = dates.indexOf(selected);
     const newIdx = idx + direction;
@@ -680,14 +681,15 @@ function navigateDate(direction) {
 function updateNavButtons() {
     const pills = document.querySelectorAll('#date-pills .date-pill');
     if (!pills.length) return;
-    const dates = Array.from(pills).map(p => p.dataset.date).sort().reverse();
-    const selected = /*[[${selectedDate}]]*/ null;
+    const dates = Array.from(pills).map(p => p.dataset.date);
+    const active = document.querySelector('#date-pills .date-pill.active');
+    const selected = active ? active.dataset.date : null;
     if (!selected) return;
     const idx = dates.indexOf(selected);
     const prevBtn = document.getElementById('btn-prev');
     const nextBtn = document.getElementById('btn-next');
-    if (prevBtn) prevBtn.classList.toggle('disabled', idx >= dates.length - 1);
-    if (nextBtn) nextBtn.classList.toggle('disabled', idx <= 0);
+    if (prevBtn) prevBtn.classList.toggle('disabled', idx <= 0);
+    if (nextBtn) nextBtn.classList.toggle('disabled', idx >= dates.length - 1);
 }
 
 function scrollActivePill() {
