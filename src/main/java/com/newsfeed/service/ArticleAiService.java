@@ -226,7 +226,8 @@ public class ArticleAiService {
         int processed = 0;
 
         try {
-            JsonNode root = objectMapper.readTree(extractJsonPayload(content));
+            String jsonPayload = extractJsonPayload(content);
+            JsonNode root = objectMapper.readTree(jsonPayload);
             JsonNode results = root.get("articles");
             if (results == null || !results.isArray()) {
                 throw new IllegalArgumentException("响应缺少articles数组");
@@ -261,7 +262,8 @@ public class ArticleAiService {
                 processed++;
             }
         } catch (Exception e) {
-            log.warn("无法解析AI响应JSON: {}", e.getMessage());
+            log.warn("无法解析AI响应JSON: {}。原始content前200个字符: {}",
+                    e.getMessage(), preview(content));
             recordAiFailures(articles, "AI响应JSON解析失败: " + e.getMessage());
             log.info("AI处理结果: 0/{} 篇文章成功分类", articles.size());
             return;
@@ -302,11 +304,19 @@ public class ArticleAiService {
             if (message == null) {
                 return null;
             }
-            for (String field : List.of("content", "reasoning_content")) {
-                if (message.hasNonNull(field) && !message.get(field).asText().isBlank()) {
-                    return message.get(field).asText();
-                }
+            String content = message.path("content").asText("");
+            String reasoningContent = message.path("reasoning_content").asText("");
+            if (content.isBlank()) {
+                log.warn("AI最终content为空；content前200个字符: {}；reasoning_content前200个字符: {}",
+                        preview(content), preview(reasoningContent));
+                return null;
             }
+            String stripped = content.stripLeading();
+            if (!stripped.startsWith("{") && !stripped.startsWith("[")) {
+                log.warn("AI最终content以非JSON噪声开头，原始content前200个字符: {}",
+                        preview(content));
+            }
+            return content;
         } catch (Exception e) {
             log.debug("无法解析AI API响应: {}", e.getMessage());
         }
@@ -399,16 +409,37 @@ public class ArticleAiService {
     }
 
     private String extractJsonPayload(String content) {
-        int objectStart = content.indexOf('{');
-        int arrayStart = content.indexOf('[');
-        int start = objectStart < 0 ? arrayStart
-                : arrayStart < 0 ? objectStart : Math.min(objectStart, arrayStart);
-        if (start < 0) {
-            String preview = content.substring(0, Math.min(content.length(), 200));
-            log.warn("响应中未找到JSON起始符，原始响应前200个字符: {}", preview);
-            throw new IllegalArgumentException("响应中没有JSON对象或数组");
+        boolean foundJsonStart = false;
+        for (int start = 0; start < content.length(); start++) {
+            char startChar = content.charAt(start);
+            if (startChar != '{' && startChar != '[') {
+                continue;
+            }
+            foundJsonStart = true;
+            int end = findBalancedJsonEnd(content, start);
+            if (end < 0) {
+                continue;
+            }
+            String candidate = content.substring(start, end);
+            try {
+                JsonNode root = objectMapper.readTree(candidate);
+                if (root != null && root.isObject()
+                        && root.path("articles").isArray()) {
+                    return candidate;
+                }
+            } catch (Exception ignored) {
+                // This can be a bracket or brace in leading model noise; try the next candidate.
+            }
         }
 
+        if (!foundJsonStart) {
+            log.warn("响应中未找到JSON起始符，原始响应前200个字符: {}", preview(content));
+            throw new IllegalArgumentException("响应中没有JSON对象或数组");
+        }
+        throw new IllegalArgumentException("响应中没有包含articles数组的完整JSON对象");
+    }
+
+    private int findBalancedJsonEnd(String content, int start) {
         ArrayDeque<Character> expectedClosings = new ArrayDeque<>();
         boolean inString = false;
         for (int i = start; i < content.length(); i++) {
@@ -421,14 +452,21 @@ public class ArticleAiService {
                 expectedClosings.push(c == '{' ? '}' : ']');
             } else if (!inString && (c == '}' || c == ']')) {
                 if (expectedClosings.isEmpty() || expectedClosings.pop() != c) {
-                    throw new IllegalArgumentException("JSON括号不匹配");
+                    return -1;
                 }
                 if (expectedClosings.isEmpty()) {
-                    return content.substring(start, i + 1);
+                    return i + 1;
                 }
             }
         }
-        throw new IllegalArgumentException("JSON对象或数组不完整");
+        return -1;
+    }
+
+    private String preview(String value) {
+        if (value == null) {
+            return "<null>";
+        }
+        return value.substring(0, Math.min(value.length(), 200));
     }
 
     private String textValue(JsonNode node, String... fieldNames) {

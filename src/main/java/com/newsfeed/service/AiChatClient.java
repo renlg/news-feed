@@ -12,6 +12,8 @@ import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /** Sends chat requests and retries once with the configured fallback model when appropriate. */
@@ -25,8 +27,10 @@ final class AiChatClient {
                                      ObjectNode requestBody, Duration timeout,
                                      String operation) throws IOException, InterruptedException {
         String primaryModel = requestBody.path("model").asText();
+        ObjectNode normalizedRequestBody = requestBody.deepCopy();
+        moveSystemMessageToFront(normalizedRequestBody, objectMapper);
         HttpResponse<String> response = sendWithModel(
-                aiConfig, objectMapper, requestBody, timeout, operation, primaryModel);
+                aiConfig, objectMapper, normalizedRequestBody, timeout, operation, primaryModel);
 
         String fallbackModel = aiConfig.getFallbackModel();
         if (isConfiguredFallback(primaryModel, fallbackModel)
@@ -41,7 +45,7 @@ final class AiChatClient {
                         operation, primaryModel, response.statusCode(), fallbackModel);
             }
             response = sendWithModel(
-                    aiConfig, objectMapper, requestBody, timeout, operation, fallbackModel);
+                    aiConfig, objectMapper, normalizedRequestBody, timeout, operation, fallbackModel);
         }
         return response;
     }
@@ -52,8 +56,11 @@ final class AiChatClient {
             throws IOException, InterruptedException {
         ObjectNode bodyForModel = requestBody.deepCopy();
         bodyForModel.put("model", model);
-        moveSystemMessageToFront(bodyForModel, objectMapper);
-        log.info("{} chat API call using model {}", operation, model);
+        List<String> roles = messageRoles(bodyForModel);
+        if (roles.isEmpty() || !"system".equals(roles.get(0))) {
+            throw new IllegalStateException("Normalized chat request must start with system message");
+        }
+        log.info("{} chat API call using model {}; messages roles: {}", operation, model, roles);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(apiBaseUrl(aiConfig) + "/v1/chat/completions"))
@@ -102,6 +109,18 @@ final class AiChatClient {
         normalizedMessages.add(systemMessage);
         normalizedMessages.addAll(nonSystemMessages);
         requestBody.set("messages", normalizedMessages);
+    }
+
+    private static List<String> messageRoles(ObjectNode requestBody) {
+        JsonNode messagesNode = requestBody.get("messages");
+        if (messagesNode == null || !messagesNode.isArray()) {
+            throw new IllegalArgumentException("Chat request must contain a messages array");
+        }
+        List<String> roles = new ArrayList<>();
+        for (JsonNode message : messagesNode) {
+            roles.add(message.path("role").asText("<missing>"));
+        }
+        return roles;
     }
 
     private static boolean isConfiguredFallback(String primaryModel, String fallbackModel) {
