@@ -58,15 +58,15 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <label for="categoryFilter" class="form-label">Category</label>
+                <label for="categoryFilter" class="form-label">AI分类</label>
                 <select class="form-select" id="categoryFilter" name="category">
-                    <option value="">All Categories</option>
+                    <option value="">全部AI分类</option>
                     <option th:each="cat : ${categories}"
                             th:value="${cat}"
                             th:selected="${category != null && category == cat}"
-                            th:text="${cat}">Category</option>
+                            th:text="${cat}">AI分类</option>
                     <option value="__NULL__"
-                            th:selected="${category != null && category == '__NULL__'}">其他</option>
+                            th:selected="${category != null && (category == '__NULL__' || category == '__NO_CATEGORY__')}">其他</option>
                 </select>
             </div>
             <div class="col-md-2">

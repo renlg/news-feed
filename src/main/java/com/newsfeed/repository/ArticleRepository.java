@@ -31,8 +31,17 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
            "OR LOWER(a.content) LIKE LOWER(CONCAT('%', :q, '%'))) " +
            "AND (:sourceId IS NULL OR a.feedSourceId = :sourceId) " +
            "AND (:category IS NULL OR :category = '' " +
-           "OR (:category = '__NO_CATEGORY__' AND (a.category IS NULL OR a.category = '')) " +
-           "OR LOWER(CONCAT(',', a.category, ',')) LIKE LOWER(CONCAT('%,', :category, ',%')))")
+           "OR (:category = '__NO_CATEGORY__' " +
+           "AND (a.aiCategoryName IS NULL OR TRIM(a.aiCategoryName) = '') " +
+           "AND (a.aiCategory IS NULL OR TRIM(a.aiCategory) = '')) " +
+           "OR LOWER(CASE " +
+           "WHEN a.aiCategoryName IS NOT NULL AND TRIM(a.aiCategoryName) <> '' THEN a.aiCategoryName " +
+           "WHEN a.aiCategory = 'ai' THEN 'AI' " +
+           "WHEN a.aiCategory = 'tech' THEN '科技' " +
+           "WHEN a.aiCategory = 'domestic' THEN '国内' " +
+           "WHEN a.aiCategory = 'japan' THEN '日本' " +
+           "WHEN a.aiCategory = 'international' THEN '国际' " +
+           "ELSE NULL END) = LOWER(:category))")
     Page<Article> search(@Param("q") String keyword,
                          @Param("sourceId") Long sourceId,
                          @Param("category") String category,
@@ -43,15 +52,32 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
            "OR LOWER(a.content) LIKE LOWER(CONCAT('%', :q, '%'))) " +
            "AND (:sourceId IS NULL OR a.feedSourceId = :sourceId) " +
            "AND (:category IS NULL OR :category = '' " +
-           "OR (:category = '__NO_CATEGORY__' AND (a.category IS NULL OR a.category = '')) " +
-           "OR LOWER(CONCAT(',', a.category, ',')) LIKE LOWER(CONCAT('%,', :category, ',%')))")
+           "OR (:category = '__NO_CATEGORY__' " +
+           "AND (a.aiCategoryName IS NULL OR TRIM(a.aiCategoryName) = '') " +
+           "AND (a.aiCategory IS NULL OR TRIM(a.aiCategory) = '')) " +
+           "OR LOWER(CASE " +
+           "WHEN a.aiCategoryName IS NOT NULL AND TRIM(a.aiCategoryName) <> '' THEN a.aiCategoryName " +
+           "WHEN a.aiCategory = 'ai' THEN 'AI' " +
+           "WHEN a.aiCategory = 'tech' THEN '科技' " +
+           "WHEN a.aiCategory = 'domestic' THEN '国内' " +
+           "WHEN a.aiCategory = 'japan' THEN '日本' " +
+           "WHEN a.aiCategory = 'international' THEN '国际' " +
+           "ELSE NULL END) = LOWER(:category))")
     List<Article> search(@Param("q") String keyword,
                          @Param("sourceId") Long sourceId,
                          @Param("category") String category,
                          Sort sort);
 
-    @Query("SELECT DISTINCT a.category FROM Article a WHERE a.category IS NOT NULL ORDER BY a.category")
-    List<String> findDistinctCategories();
+    @Query("SELECT DISTINCT CASE " +
+           "WHEN a.aiCategoryName IS NOT NULL AND TRIM(a.aiCategoryName) <> '' THEN a.aiCategoryName " +
+           "WHEN a.aiCategory = 'ai' THEN 'AI' " +
+           "WHEN a.aiCategory = 'tech' THEN '科技' " +
+           "WHEN a.aiCategory = 'domestic' THEN '国内' " +
+           "WHEN a.aiCategory = 'japan' THEN '日本' " +
+           "WHEN a.aiCategory = 'international' THEN '国际' " +
+           "ELSE NULL END " +
+           "FROM Article a")
+    List<String> findDistinctAiCategoryDisplayNames();
 
     @Query("SELECT a FROM Article a WHERE COALESCE(a.publishedAt, a.fetchedAt) < :cutoff")
     List<Article> findByPublishedAtBefore(@Param("cutoff") LocalDateTime cutoff);

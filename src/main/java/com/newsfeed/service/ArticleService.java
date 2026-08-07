@@ -47,12 +47,8 @@ public class ArticleService {
     }
 
     public List<String> getCategories() {
-        List<String> rawCategories = articleRepository.findDistinctCategories();
-        return rawCategories.stream()
+        return articleRepository.findDistinctAiCategoryDisplayNames().stream()
                 .filter(c -> c != null && !c.trim().isEmpty())
-                .flatMap(c -> java.util.Arrays.stream(c.split(",")))
-                .map(String::trim)
-                .filter(c -> !c.isEmpty())
                 .distinct()
                 .sorted()
                 .toList();
