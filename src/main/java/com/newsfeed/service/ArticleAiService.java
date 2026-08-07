@@ -36,6 +36,8 @@ public class ArticleAiService {
 
     // Production responses for eight or more articles can exceed the 4,000-token cap.
     private static final int BATCH_SIZE = 4;
+    private static final int MAX_BATCH_ATTEMPTS = 3;
+    private static final long BATCH_RETRY_DELAY_MILLIS = 3000;
     private static final int SUMMARY_LIMIT = 300;
     static final int MAX_AI_FAILURES = 3;
     private static final Set<String> AI_CATEGORIES = Set.of(
@@ -173,100 +175,126 @@ public class ArticleAiService {
         return count;
     }
 
-    /** Calls the AI once for a batch to categorize, score, summarize, and set the Chinese category. */
+    /** Calls the AI for a batch, retrying immediate failures before recording a failed pass. */
     void processBatch(List<Article> articles) {
-        try {
-            ObjectNode input = objectMapper.createObjectNode();
-            var inputArticles = input.putArray("articles");
-            for (Article article : articles) {
-                ObjectNode item = inputArticles.addObject();
-                item.put("id", article.getId());
-                item.put("title", nullToEmpty(article.getTitle()));
-                item.put("summary", truncate(article.getSummary(), SUMMARY_LIMIT));
-                item.put("currentCategory", nullToEmpty(article.getCategory()));
-            }
-
-            ObjectNode requestBody = objectMapper.createObjectNode();
-            requestBody.put("model", configuredModel());
-            requestBody.put("temperature", 0.2);
-            requestBody.put("max_tokens", 4000);
-            var messages = requestBody.putArray("messages");
-            messages.addObject().put("role", "system").put("content", SYSTEM_PROMPT);
-            messages.addObject().put("role", "user")
-                    .put("content", objectMapper.writeValueAsString(input));
-
-            HttpResponse<String> response = AiChatClient.send(
-                    aiConfig, objectMapper, requestBody, Duration.ofSeconds(120),
-                    "Article AI processing");
-
-            if (response.statusCode() == 200) {
-                logTokenUsage(response.body(), articles.size());
-                String content = extractContent(response.body());
-                if (content != null && !content.isBlank()) {
-                    parseAndUpdateArticles(content, articles);
-                    log.info("AI处理完成: {} 篇文章", articles.size());
-                } else {
-                    log.warn("AI返回内容为空");
-                    recordAiFailures(articles, "AI返回内容为空");
+        Exception lastFailure = null;
+        for (int attempt = 1; attempt <= MAX_BATCH_ATTEMPTS; attempt++) {
+            try {
+                processBatchOnce(articles);
+                return;
+            } catch (Exception e) {
+                lastFailure = e;
+                if (attempt < MAX_BATCH_ATTEMPTS) {
+                    log.warn("AI批处理失败，第{}次重试 (共{}次): {}",
+                            attempt, MAX_BATCH_ATTEMPTS, failureReason(e));
+                    try {
+                        Thread.sleep(BATCH_RETRY_DELAY_MILLIS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        lastFailure = interrupted;
+                        break;
+                    }
                 }
-            } else {
-                log.warn("AI API返回状态 {}: {}", response.statusCode(), response.body());
-                recordAiFailures(articles, "AI API状态 " + response.statusCode());
             }
-        } catch (Exception e) {
-            log.warn("AI处理失败: {}", e.getMessage());
-            recordAiFailures(articles, "AI处理异常: " + e.getMessage());
         }
+
+        String reason = failureReason(lastFailure);
+        log.warn("AI处理失败: {}", reason);
+        recordAiFailures(articles, "AI处理异常: " + reason);
+    }
+
+    private void processBatchOnce(List<Article> articles) throws Exception {
+        ObjectNode input = objectMapper.createObjectNode();
+        var inputArticles = input.putArray("articles");
+        for (Article article : articles) {
+            ObjectNode item = inputArticles.addObject();
+            item.put("id", article.getId());
+            item.put("title", nullToEmpty(article.getTitle()));
+            item.put("summary", truncate(article.getSummary(), SUMMARY_LIMIT));
+            item.put("currentCategory", nullToEmpty(article.getCategory()));
+        }
+
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("model", configuredModel());
+        requestBody.put("temperature", 0.2);
+        requestBody.put("max_tokens", 4000);
+        var messages = requestBody.putArray("messages");
+        messages.addObject().put("role", "system").put("content", SYSTEM_PROMPT);
+        messages.addObject().put("role", "user")
+                .put("content", objectMapper.writeValueAsString(input));
+
+        HttpResponse<String> response = AiChatClient.send(
+                aiConfig, objectMapper, requestBody, Duration.ofSeconds(120),
+                "Article AI processing");
+
+        if (response.statusCode() != 200) {
+            log.warn("AI API返回状态 {}: {}", response.statusCode(), response.body());
+            throw new IllegalStateException("AI API状态 " + response.statusCode());
+        }
+
+        String content = extractContent(response.body());
+        if (content == null || content.isBlank()) {
+            log.warn("AI返回内容为空");
+            throw new IllegalStateException("AI返回内容为空");
+        }
+
+        parseAndUpdateArticlesOrThrow(content, articles);
+        logTokenUsage(response.body(), articles.size());
+        log.info("AI处理完成: {} 篇文章", articles.size());
     }
 
     void parseAndUpdateArticles(String content, List<Article> articles) {
-        Map<Long, Article> articleMap = new HashMap<>();
-        articles.forEach(article -> articleMap.put(article.getId(), article));
-        Set<Long> successfulArticleIds = new java.util.HashSet<>();
-        int processed = 0;
-
         try {
-            String jsonPayload = extractJsonPayload(content);
-            JsonNode root = objectMapper.readTree(jsonPayload);
-            JsonNode results = root.get("articles");
-            if (results == null || !results.isArray()) {
-                throw new IllegalArgumentException("响应缺少articles数组");
-            }
-
-            for (JsonNode result : results) {
-                long id = result.path("id").asLong(-1);
-                Article article = articleMap.get(id);
-                String aiCategory = textValue(result, "aiCategory", "category");
-                String summary = textValue(result, "summary");
-                int score = result.path("score").asInt(-1);
-                if (article == null || !AI_CATEGORIES.contains(aiCategory)
-                        || score < 1 || score > 10 || summary == null || summary.isBlank()
-                        || !successfulArticleIds.add(id)) {
-                    continue;
-                }
-
-                article.setAiCategory(aiCategory);
-                article.setImportanceScore(score);
-                article.setAiSummary(summary);
-                String chineseCategory = textValue(result, "chineseCategory");
-                if (CHINESE_CATEGORIES.contains(chineseCategory)) {
-                    article.setAiCategoryName(chineseCategory);
-                }
-                if (article.getCategory() == null || article.getCategory().isBlank()) {
-                    if (CHINESE_CATEGORIES.contains(chineseCategory)) {
-                        article.setCategory(chineseCategory);
-                    }
-                }
-                article.setAiProcessed(true);
-                article.setAiFailCount(0);
-                processed++;
-            }
+            parseAndUpdateArticlesOrThrow(content, articles);
         } catch (Exception e) {
             log.warn("无法解析AI响应JSON: {}。原始content前200个字符: {}",
                     e.getMessage(), preview(content));
             recordAiFailures(articles, "AI响应JSON解析失败: " + e.getMessage());
             log.info("AI处理结果: 0/{} 篇文章成功分类", articles.size());
-            return;
+        }
+    }
+
+    private void parseAndUpdateArticlesOrThrow(String content, List<Article> articles)
+            throws Exception {
+        Map<Long, Article> articleMap = new HashMap<>();
+        articles.forEach(article -> articleMap.put(article.getId(), article));
+        Set<Long> successfulArticleIds = new java.util.HashSet<>();
+        int processed = 0;
+
+        String jsonPayload = extractJsonPayload(content);
+        JsonNode root = objectMapper.readTree(jsonPayload);
+        JsonNode results = root.get("articles");
+        if (results == null || !results.isArray()) {
+            throw new IllegalArgumentException("响应缺少articles数组");
+        }
+
+        for (JsonNode result : results) {
+            long id = result.path("id").asLong(-1);
+            Article article = articleMap.get(id);
+            String aiCategory = textValue(result, "aiCategory", "category");
+            String summary = textValue(result, "summary");
+            int score = result.path("score").asInt(-1);
+            if (article == null || !AI_CATEGORIES.contains(aiCategory)
+                    || score < 1 || score > 10 || summary == null || summary.isBlank()
+                    || !successfulArticleIds.add(id)) {
+                continue;
+            }
+
+            article.setAiCategory(aiCategory);
+            article.setImportanceScore(score);
+            article.setAiSummary(summary);
+            String chineseCategory = textValue(result, "chineseCategory");
+            if (CHINESE_CATEGORIES.contains(chineseCategory)) {
+                article.setAiCategoryName(chineseCategory);
+            }
+            if (article.getCategory() == null || article.getCategory().isBlank()) {
+                if (CHINESE_CATEGORIES.contains(chineseCategory)) {
+                    article.setCategory(chineseCategory);
+                }
+            }
+            article.setAiProcessed(true);
+            article.setAiFailCount(0);
+            processed++;
         }
 
         for (Article article : articles) {
@@ -276,6 +304,15 @@ public class ArticleAiService {
         }
         articleRepository.saveAll(articles);
         log.info("AI处理结果: {}/{} 篇文章成功分类", processed, articles.size());
+    }
+
+    private String failureReason(Exception failure) {
+        if (failure == null) {
+            return "未知错误";
+        }
+        String message = failure.getMessage();
+        return message == null || message.isBlank()
+                ? failure.getClass().getSimpleName() : message;
     }
 
     private void recordAiFailures(List<Article> articles, String reason) {
