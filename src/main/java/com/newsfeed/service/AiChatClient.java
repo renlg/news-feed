@@ -1,6 +1,8 @@
 package com.newsfeed.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.newsfeed.config.AiConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +52,7 @@ final class AiChatClient {
             throws IOException, InterruptedException {
         ObjectNode bodyForModel = requestBody.deepCopy();
         bodyForModel.put("model", model);
+        moveSystemMessageToFront(bodyForModel, objectMapper);
         log.info("{} chat API call using model {}", operation, model);
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -62,6 +65,43 @@ final class AiChatClient {
                 .build();
         return AiConfig.getSharedHttpClient().send(
                 request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static void moveSystemMessageToFront(ObjectNode requestBody,
+                                                  ObjectMapper objectMapper) {
+        JsonNode messagesNode = requestBody.get("messages");
+        if (messagesNode == null || !messagesNode.isArray()) {
+            throw new IllegalArgumentException("Chat request must contain a messages array");
+        }
+
+        ObjectNode systemMessage = null;
+        StringBuilder systemContent = new StringBuilder();
+        ArrayNode nonSystemMessages = objectMapper.createArrayNode();
+        for (JsonNode message : messagesNode) {
+            if (message.isObject() && "system".equals(message.path("role").asText())) {
+                if (systemMessage == null) {
+                    systemMessage = ((ObjectNode) message).deepCopy();
+                }
+                if (message.hasNonNull("content")) {
+                    if (!systemContent.isEmpty()) {
+                        systemContent.append("\n\n");
+                    }
+                    systemContent.append(message.get("content").asText());
+                }
+            } else {
+                nonSystemMessages.add(message.deepCopy());
+            }
+        }
+
+        if (systemMessage == null) {
+            throw new IllegalArgumentException("Chat request must contain a system message");
+        }
+        systemMessage.put("content", systemContent.toString());
+
+        ArrayNode normalizedMessages = objectMapper.createArrayNode();
+        normalizedMessages.add(systemMessage);
+        normalizedMessages.addAll(nonSystemMessages);
+        requestBody.set("messages", normalizedMessages);
     }
 
     private static boolean isConfiguredFallback(String primaryModel, String fallbackModel) {

@@ -16,6 +16,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -225,7 +226,7 @@ public class ArticleAiService {
         int processed = 0;
 
         try {
-            JsonNode root = objectMapper.readTree(extractJsonObject(content));
+            JsonNode root = objectMapper.readTree(extractJsonPayload(content));
             JsonNode results = root.get("articles");
             if (results == null || !results.isArray()) {
                 throw new IllegalArgumentException("响应缺少articles数组");
@@ -397,12 +398,18 @@ public class ArticleAiService {
         return article.getAiFailCount() == null ? 0 : article.getAiFailCount();
     }
 
-    private String extractJsonObject(String content) {
-        int start = content.indexOf('{');
+    private String extractJsonPayload(String content) {
+        int objectStart = content.indexOf('{');
+        int arrayStart = content.indexOf('[');
+        int start = objectStart < 0 ? arrayStart
+                : arrayStart < 0 ? objectStart : Math.min(objectStart, arrayStart);
         if (start < 0) {
-            throw new IllegalArgumentException("响应中没有JSON对象");
+            String preview = content.substring(0, Math.min(content.length(), 200));
+            log.warn("响应中未找到JSON起始符，原始响应前200个字符: {}", preview);
+            throw new IllegalArgumentException("响应中没有JSON对象或数组");
         }
-        int depth = 0;
+
+        ArrayDeque<Character> expectedClosings = new ArrayDeque<>();
         boolean inString = false;
         for (int i = start; i < content.length(); i++) {
             char c = content.charAt(i);
@@ -410,13 +417,18 @@ public class ArticleAiService {
                 i++;
             } else if (c == '"') {
                 inString = !inString;
-            } else if (!inString && c == '{') {
-                depth++;
-            } else if (!inString && c == '}' && --depth == 0) {
-                return content.substring(start, i + 1);
+            } else if (!inString && (c == '{' || c == '[')) {
+                expectedClosings.push(c == '{' ? '}' : ']');
+            } else if (!inString && (c == '}' || c == ']')) {
+                if (expectedClosings.isEmpty() || expectedClosings.pop() != c) {
+                    throw new IllegalArgumentException("JSON括号不匹配");
+                }
+                if (expectedClosings.isEmpty()) {
+                    return content.substring(start, i + 1);
+                }
             }
         }
-        throw new IllegalArgumentException("JSON对象不完整");
+        throw new IllegalArgumentException("JSON对象或数组不完整");
     }
 
     private String textValue(JsonNode node, String... fieldNames) {
