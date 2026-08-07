@@ -94,7 +94,8 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
 
     @Query("SELECT a FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) " +
            "AND COALESCE(a.aiFailCount, 0) < 3 " +
-           "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
+           "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true) " +
+           "ORDER BY a.id DESC")
     List<Article> findUnprocessedArticles();
 
     @Modifying(clearAutomatically = true)
