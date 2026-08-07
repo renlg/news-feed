@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -36,6 +39,8 @@ public class ArticleAiService {
 
     // Production responses for eight or more articles can exceed the 4,000-token cap.
     private static final int BATCH_SIZE = 4;
+    private static final int BATCH_POOL_SIZE = 10;
+    private static final long BATCH_POOL_TIMEOUT_MINUTES = 20;
     private static final int MAX_BATCH_ATTEMPTS = 3;
     private static final long BATCH_RETRY_DELAY_MILLIS = 3000;
     private static final int SUMMARY_LIMIT = 300;
@@ -140,16 +145,38 @@ public class ArticleAiService {
         log.info("发现 {} 篇待AI处理的文章，标题去重后 {} 篇（省略 {} 篇重复文章）",
                 unprocessed.size(), articlesToProcess.size(), duplicateCount);
 
+        List<List<Article>> batches = new ArrayList<>();
         for (int i = 0; i < articlesToProcess.size(); i += BATCH_SIZE) {
-            List<Article> batch = articlesToProcess.subList(
-                    i, Math.min(i + BATCH_SIZE, articlesToProcess.size()));
-            try {
-                processBatch(batch);
-            } catch (Exception e) {
-                log.warn("AI处理批次失败: {}", e.getMessage());
-                recordAiFailures(batch, "批次异常: " + e.getMessage());
-            }
+            batches.add(articlesToProcess.subList(
+                    i, Math.min(i + BATCH_SIZE, articlesToProcess.size())));
         }
+
+        int batchCount = batches.size();
+        log.info("AI并行处理: 共 {} 批, 并发 {}, 文章 {} 篇",
+                batchCount, BATCH_POOL_SIZE, articlesToProcess.size());
+        ExecutorService batchExecutor = Executors.newFixedThreadPool(BATCH_POOL_SIZE);
+        for (List<Article> batch : batches) {
+            batchExecutor.submit(() -> {
+                try {
+                    processBatch(batch);
+                } catch (Exception e) {
+                    log.warn("AI处理批次失败: {}", e.getMessage());
+                    recordAiFailures(batch, "批次异常: " + e.getMessage());
+                }
+            });
+        }
+        batchExecutor.shutdown();
+        try {
+            if (!batchExecutor.awaitTermination(BATCH_POOL_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+                log.warn("AI并行处理等待超时，取消尚未完成的批次");
+                batchExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            log.warn("AI并行处理等待被中断，取消尚未完成的批次");
+            batchExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        log.info("AI并行处理完成: {} 批", batchCount);
 
         copyResultsToDuplicates(articlesToProcess, deduplication.duplicatesByRepresentativeId());
     }
