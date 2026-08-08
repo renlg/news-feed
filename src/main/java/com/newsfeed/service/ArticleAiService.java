@@ -44,7 +44,7 @@ public class ArticleAiService {
     private static final int MAX_BATCH_ATTEMPTS = 3;
     private static final long BATCH_RETRY_DELAY_MILLIS = 3000;
     private static final int SUMMARY_LIMIT = 300;
-    static final int MAX_AI_FAILURES = 3;
+    static final int MAX_AI_FAILURES = 10;
     private static final Set<String> AI_CATEGORIES = Set.of(
             "ai", "tech", "domestic", "japan", "international");
     private static final Set<String> CHINESE_CATEGORIES = Set.of(

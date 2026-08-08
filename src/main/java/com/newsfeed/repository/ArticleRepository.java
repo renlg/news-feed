@@ -93,7 +93,7 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     List<Article> findByFetchedAtBetween(@Param("since") LocalDateTime since, @Param("until") LocalDateTime until);
 
     @Query("SELECT a FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) " +
-           "AND COALESCE(a.aiFailCount, 0) < 3 " +
+           "AND COALESCE(a.aiFailCount, 0) < 10 " +
            "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true) " +
            "ORDER BY a.id DESC")
     List<Article> findUnprocessedArticles();
@@ -117,7 +117,7 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     long countProcessedFromAiSources();
 
     @Query("SELECT COUNT(a) FROM Article a WHERE (a.aiProcessed = false OR a.aiProcessed IS NULL) " +
-           "AND COALESCE(a.aiFailCount, 0) < 3 " +
+           "AND COALESCE(a.aiFailCount, 0) < 10 " +
            "AND a.feedSourceId IN (SELECT fs.id FROM FeedSource fs WHERE fs.aiCategorize = true)")
     long countUnprocessedFromAiSources();
 
