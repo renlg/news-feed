@@ -14,6 +14,8 @@ import org.jdom2.input.SAXBuilder;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -56,8 +58,12 @@ public class RssFeedParser implements FeedParser {
             saxBuilder.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false);
             saxBuilder.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
 
-            try (InputStream is = response.body()) {
-                Document jdomDoc = saxBuilder.build(new XmlReader(is));
+            try (InputStream is = response.body(); XmlReader xmlReader = new XmlReader(is)) {
+                StringWriter xmlBuffer = new StringWriter();
+                xmlReader.transferTo(xmlBuffer);
+                String sanitizedXml = xmlBuffer.toString()
+                        .replaceAll("&(?!amp;|lt;|gt;|quot;|apos;|#\\d+;|#x[0-9a-fA-F]+;)", "&amp;");
+                Document jdomDoc = saxBuilder.build(new StringReader(sanitizedXml));
 
                 SyndFeedInput input = new SyndFeedInput();
                 SyndFeed feed = input.build(jdomDoc);
