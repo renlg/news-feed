@@ -2,6 +2,7 @@ package com.newsfeed.service;
 
 import com.newsfeed.config.AiConfig;
 import com.newsfeed.config.CanonicalTime;
+import com.newsfeed.config.HttpUrlSafety;
 import com.newsfeed.model.Article;
 import com.newsfeed.model.DailyDigest;
 import com.newsfeed.repository.ArticleRepository;
@@ -51,6 +52,7 @@ public class DailyDigestService {
     private final DailyDigestRepository digestRepository;
     private final AiConfig aiConfig;
     private final ArticleDedupService articleDedupService;
+    private final HttpUrlSafety httpUrlSafety;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AtomicBoolean generating = new AtomicBoolean(false);
     private final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor(
@@ -461,15 +463,12 @@ public class DailyDigestService {
                         item.importanceScore));
             }
             if (!item.links.isEmpty()) {
-                if (item.links.size() == 1) {
-                    sb.append(String.format(" <a href=\"%s\" target=\"_blank\" class=\"article-source-link\">查看原文</a>",
-                            escapeHtml(item.links.get(0))));
-                } else {
-                    sb.append(String.format(" <a href=\"%s\" target=\"_blank\" class=\"article-source-link\">查看原文</a>",
-                            escapeHtml(item.links.get(0))));
-                    for (int i = 1; i < item.links.size(); i++) {
-                        sb.append(String.format(" <a href=\"%s\" target=\"_blank\" class=\"article-source-link\">[%d]</a>",
-                                escapeHtml(item.links.get(i)), i + 1));
+                for (int i = 0; i < item.links.size(); i++) {
+                    String safeLink = safeHttpUrl(item.links.get(i));
+                    if (safeLink != null) {
+                        String label = i == 0 ? "查看原文" : "[" + (i + 1) + "]";
+                        sb.append(String.format(" <a href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"article-source-link\">%s</a>",
+                                escapeHtml(safeLink), label));
                     }
                 }
             }
@@ -480,6 +479,10 @@ public class DailyDigestService {
     }
 
     // ========== 工具方法 ==========
+
+    private String safeHttpUrl(String value) {
+        return httpUrlSafety.safeHttpUrl(value);
+    }
 
     private String truncateText(String text, int maxLen) {
         if (text == null || text.length() <= maxLen) return text != null ? text : "";

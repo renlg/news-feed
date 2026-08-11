@@ -100,7 +100,7 @@
 
     <div class="list-group">
         <a th:each="article : ${articles.content}"
-           th:href="${article.link}" target="_blank"
+           th:href="${@httpUrlSafety.safeHttpUrl(article.link)}" target="_blank" rel="noopener noreferrer"
            class="list-group-item list-group-item-action bg-dark border-secondary mb-2 article-card">
             <div class="d-flex w-100 justify-content-between">
                 <h5 class="mb-1 text-light" th:text="${article.title}">Article Title</h5>

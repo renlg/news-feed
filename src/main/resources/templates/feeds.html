@@ -118,7 +118,7 @@
                 </td>
                 <td class="fw-semibold" th:text="${source.name}">Source Name</td>
                 <td>
-                    <a th:href="${source.url}" target="_blank" class="text-info text-truncate d-inline-block"
+                    <a th:href="${@httpUrlSafety.safeHttpUrl(source.url)}" target="_blank" rel="noopener noreferrer" class="text-info text-truncate d-inline-block"
                        style="max-width: 250px;" th:text="${source.url}">URL</a>
                 </td>
                 <td><span class="badge bg-info" th:text="${source.protocol}">RSS</span></td>

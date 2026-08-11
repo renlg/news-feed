@@ -30,26 +30,20 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/css/**", "/js/**", "/login").permitAll()
                 .requestMatchers("/h2-console/**").authenticated()
-                .requestMatchers(org.springframework.http.HttpMethod.GET, "/digest", "/digest/{date}", "/digest/generation-status", "/digest/generation-error").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/digest", "/digest/{date}", "/digest/generation-status", "/digest/generation-error", "/search", "/error").permitAll()
                 .requestMatchers("/feeds/**", "/api/feeds/**", "/reports/**", "/tags/**", "/digest/**").authenticated()
-                .anyRequest().permitAll()
+                .anyRequest().authenticated()
             )
             .formLogin(form -> form
                 .loginPage("/login")
                 .defaultSuccessUrl("/feeds", true)
-                .permitAll()
             )
             .logout(logout -> logout
                 .logoutUrl("/logout")
                 .logoutSuccessUrl("/login?logout=true")
-                .permitAll()
-            )
-            .headers(headers -> headers
-                .frameOptions(frame -> frame.sameOrigin())
             )
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                .ignoringRequestMatchers("/h2-console/**", "/api/feeds/ai/**", "/digest/delete/**")
             );
 
         return http.build();
