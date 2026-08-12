@@ -14,9 +14,8 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
-/** Sends chat requests and retries once with the configured fallback model when appropriate. */
+/** Sends chat requests. */
 @Slf4j
 final class AiChatClient {
 
@@ -29,25 +28,8 @@ final class AiChatClient {
         String primaryModel = requestBody.path("model").asText();
         ObjectNode normalizedRequestBody = requestBody.deepCopy();
         moveSystemMessageToFront(normalizedRequestBody, objectMapper);
-        HttpResponse<String> response = sendWithModel(
+        return sendWithModel(
                 aiConfig, objectMapper, normalizedRequestBody, timeout, operation, primaryModel);
-
-        String fallbackModel = aiConfig.getFallbackModel();
-        if (isConfiguredFallback(primaryModel, fallbackModel)
-                && isModelUnavailable(response.statusCode(), response.body())) {
-            if (response.statusCode() == 429) {
-                log.warn("{} chat API call using model {} was rate limited (status 429); "
-                                + "retrying once with fallback model {}",
-                        operation, primaryModel, fallbackModel);
-            } else {
-                log.warn("{} chat API model {} is unavailable (status {}); "
-                                + "retrying once with fallback model {}",
-                        operation, primaryModel, response.statusCode(), fallbackModel);
-            }
-            response = sendWithModel(
-                    aiConfig, objectMapper, normalizedRequestBody, timeout, operation, fallbackModel);
-        }
-        return response;
     }
 
     private static HttpResponse<String> sendWithModel(AiConfig aiConfig, ObjectMapper objectMapper,
@@ -121,41 +103,6 @@ final class AiChatClient {
             roles.add(message.path("role").asText("<missing>"));
         }
         return roles;
-    }
-
-    private static boolean isConfiguredFallback(String primaryModel, String fallbackModel) {
-        return fallbackModel != null && !fallbackModel.isBlank()
-                && !fallbackModel.equals(primaryModel);
-    }
-
-    static boolean isModelUnavailable(int statusCode, String responseBody) {
-        if (statusCode == 429) {
-            return true;
-        }
-        if (statusCode < 400 || statusCode >= 500) {
-            return false;
-        }
-
-        String body = responseBody == null ? "" : responseBody.toLowerCase(Locale.ROOT);
-        if (statusCode == 404) {
-            return true;
-        }
-
-        boolean modelReference = body.contains("model");
-        boolean unavailableReason = body.contains("not found")
-                || body.contains("not_found")
-                || body.contains("unavailable")
-                || body.contains("unsupported")
-                || body.contains("invalid")
-                || body.contains("does not exist")
-                || body.contains("unknown")
-                || body.contains("access")
-                || body.contains("permission")
-                || body.contains("authoriz")
-                || body.contains("auth");
-        boolean upstreamAuthFailure = (statusCode == 401 || statusCode == 403)
-                && body.contains("upstream");
-        return (modelReference && unavailableReason) || upstreamAuthFailure;
     }
 
     private static String apiBaseUrl(AiConfig aiConfig) {
