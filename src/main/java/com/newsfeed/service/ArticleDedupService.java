@@ -1,24 +1,28 @@
 package com.newsfeed.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.newsfeed.config.AiConfig;
 import com.newsfeed.model.Article;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -28,18 +32,20 @@ public class ArticleDedupService {
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final double EMBEDDING_SIMILARITY_THRESHOLD = 0.85;
-    private static final int EMBEDDING_BATCH_SIZE = 100;
-    private static final int EMBEDDING_INPUT_LIMIT = 100;
+    private static final int AI_DEDUP_BATCH_SIZE = 25;
+    private static final int AI_DEDUP_CROSS_BATCH_STRIDE = 20;
+    private static final int AI_DEDUP_TITLE_LIMIT = 80;
+    private static final int AI_DEDUP_SUMMARY_LIMIT = 100;
+    private static final Duration AI_DEDUP_TIMEOUT = Duration.ofSeconds(90);
 
-    private static final int EMBEDDING_CACHE_MAX_SIZE = 5000;
-    private final Map<Long, float[]> embeddingCache = Collections.synchronizedMap(
-            new LinkedHashMap<Long, float[]>(256, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<Long, float[]> eldest) {
-                    return size() > EMBEDDING_CACHE_MAX_SIZE;
-                }
-            });
+    private static final String AI_DEDUP_SYSTEM_PROMPT = """
+            你是严谨的新闻编辑。判断输入文章中哪些描述的是同一个具体事件或同一条新闻，而不只是主题、人物或领域相似。
+            仅将确实属于同一事件的文章放进同一簇；拿不准时不要合并。没有重复的文章不要输出。
+            输出必须且只能是一个合法JSON对象，其中clusters是二维文章id数组；禁止输出说明、注释、Markdown代码围栏或任何前后缀文字。
+            必须严格使用以下紧凑格式（示例）：{"clusters":[[123,456],[789,1011,1213]]}。若没有重复，输出{"clusters":[]}。
+            每个重复簇至少包含两个输入中的id；只能使用输入中实际存在的id，不得编造、改写或遗漏重复簇中的id。
+            严格保证JSON语法有效。文本值中不得出现未转义的ASCII双引号；将文本内所有ASCII双引号替换为全角「」引号（若仍使用ASCII双引号，必须转义为\\\"）。
+            """;
 
     private static final Pattern PREFIX_PATTERN = Pattern.compile(
             "^(独家|快讯|突发|重磅|最新|紧急|速递|关注|热点|焦点|爆料|官方|刚刚|今日|明日|" +
@@ -64,13 +70,13 @@ public class ArticleDedupService {
             log.info("标题去重: {} → {} (移除 {} 篇)", articles.size(), titleResult.articles().size(), titleRemoved);
         }
 
-        DedupResult embeddingResult = deduplicateByEmbedding(titleResult.articles(), titleResult.clusterLinks());
-        int embeddingRemoved = titleResult.articles().size() - embeddingResult.articles().size();
-        if (embeddingRemoved > 0) {
-            log.info("语义去重: {} → {} (移除 {} 篇)", titleResult.articles().size(), embeddingResult.articles().size(), embeddingRemoved);
+        DedupResult semanticResult = deduplicateByAi(titleResult.articles(), titleResult.clusterLinks());
+        int semanticRemoved = titleResult.articles().size() - semanticResult.articles().size();
+        if (semanticRemoved > 0) {
+            log.info("语义去重: {} → {} (移除 {} 篇)", titleResult.articles().size(), semanticResult.articles().size(), semanticRemoved);
         }
 
-        return embeddingResult;
+        return semanticResult;
     }
 
     String normalizeTitle(String title) {
@@ -112,203 +118,178 @@ public class ArticleDedupService {
         return new DedupResult(new ArrayList<>(bestByNormalized.values()), clusterLinks);
     }
 
-    DedupResult deduplicateByEmbedding(List<Article> articles, Map<Long, List<String>> titleClusterLinks) {
+    private DedupResult deduplicateByAi(List<Article> articles,
+                                        Map<Long, List<String>> titleClusterLinks) {
         if (articles.size() <= 1) return new DedupResult(articles, titleClusterLinks);
         if (aiConfig.getKey() == null || aiConfig.getKey().isBlank()) {
-            log.info("AI未配置，跳过embedding去重");
+            log.warn("AI语义去重失败，降级使用标题去重结果: AI未配置");
             return new DedupResult(articles, titleClusterLinks);
         }
 
         try {
-            List<Long> uncachedIds = new ArrayList<>();
-            List<Article> uncachedArticles = new ArrayList<>();
-            Map<Long, float[]> cachedEmbeddings = new LinkedHashMap<>();
-
-            for (Article a : articles) {
-                float[] cached = embeddingCache.get(a.getId());
-                if (cached != null) {
-                    cachedEmbeddings.put(a.getId(), cached);
-                } else {
-                    uncachedIds.add(a.getId());
-                    uncachedArticles.add(a);
+            Map<Long, Article> articlesById = new LinkedHashMap<>();
+            for (Article article : articles) {
+                if (article.getId() == null || articlesById.put(article.getId(), article) != null) {
+                    throw new IllegalArgumentException("文章id为空或重复");
                 }
             }
 
-            List<float[]> embeddings;
-            if (uncachedArticles.isEmpty()) {
-                embeddings = articles.stream()
-                        .map(a -> cachedEmbeddings.get(a.getId()))
-                        .collect(Collectors.toList());
-                log.info("Embedding全部命中缓存: {} 篇", articles.size());
-            } else {
-                List<String> uncachedInputs = new ArrayList<>();
-                for (Article a : uncachedArticles) {
-                    String title = a.getTitle() != null ? a.getTitle() : "";
-                    String summary = a.getAiSummary() != null ? a.getAiSummary() : "";
-                    String input = title + " " + summary;
-                    if (input.length() > EMBEDDING_INPUT_LIMIT) {
-                        input = input.substring(0, EMBEDDING_INPUT_LIMIT);
-                    }
-                    uncachedInputs.add(input);
-                }
-                List<float[]> uncachedEmbeddings = batchGetEmbeddings(uncachedInputs);
-                if (uncachedEmbeddings == null || uncachedEmbeddings.size() != uncachedArticles.size()) {
-                    log.warn("Embedding获取失败或不完整，降级使用标题去重结果");
-                    return new DedupResult(articles, titleClusterLinks);
-                }
-                for (int i = 0; i < uncachedArticles.size(); i++) {
-                    embeddingCache.put(uncachedIds.get(i), uncachedEmbeddings.get(i));
-                    cachedEmbeddings.put(uncachedIds.get(i), uncachedEmbeddings.get(i));
-                }
-                if (!cachedEmbeddings.isEmpty() && uncachedArticles.size() < articles.size()) {
-                    log.info("Embedding缓存命中 {} 篇，新计算 {} 篇",
-                            articles.size() - uncachedArticles.size(), uncachedArticles.size());
-                }
-                embeddings = articles.stream()
-                        .map(a -> cachedEmbeddings.get(a.getId()))
-                        .collect(Collectors.toList());
+            DisjointSet clusters = new DisjointSet(articlesById.keySet());
+            processBatches(articles, AI_DEDUP_BATCH_SIZE, clusters);
+
+            if (articles.size() > AI_DEDUP_BATCH_SIZE) {
+                List<Article> representatives = selectRepresentatives(articles, clusters);
+                representatives.sort(Comparator
+                        .comparing((Article article) -> normalizeTitle(article.getTitle()))
+                        .thenComparing(Article::getId));
+                processBatches(representatives, AI_DEDUP_CROSS_BATCH_STRIDE, clusters);
             }
 
-            return clusterAndSelect(articles, embeddings, titleClusterLinks);
+            DedupResult result = selectAndMerge(articles, clusters, titleClusterLinks);
+            log.info("AI语义去重: {} 篇文章 → {} 个事件簇", articles.size(), result.articles().size());
+            return result;
         } catch (Exception e) {
-            log.warn("Embedding去重失败，降级使用标题去重结果: {}", e.getMessage());
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.warn("AI语义去重失败，降级使用标题去重结果: {}", e.getMessage());
             return new DedupResult(articles, titleClusterLinks);
         }
     }
 
-    private DedupResult clusterAndSelect(List<Article> articles, List<float[]> embeddings, Map<Long, List<String>> titleClusterLinks) {
-        List<List<Integer>> clusters = new ArrayList<>();
-        List<float[]> centers = new ArrayList<>();
-
-        for (int i = 0; i < embeddings.size(); i++) {
-            float[] emb = embeddings.get(i);
-            int bestCluster = -1;
-            double bestSim = -1;
-
-            for (int c = 0; c < clusters.size(); c++) {
-                double sim = cosineSimilarity(emb, centers.get(c));
-                if (sim > EMBEDDING_SIMILARITY_THRESHOLD && sim > bestSim) {
-                    bestSim = sim;
-                    bestCluster = c;
+    private void processBatches(List<Article> articles, int stride, DisjointSet clusters)
+            throws Exception {
+        if (articles.size() <= 1) return;
+        for (int start = 0; start < articles.size(); start += stride) {
+            int end = Math.min(start + AI_DEDUP_BATCH_SIZE, articles.size());
+            List<Article> batch = articles.subList(start, end);
+            for (List<Long> duplicateIds : requestDuplicateClusters(batch)) {
+                Long first = duplicateIds.get(0);
+                for (int i = 1; i < duplicateIds.size(); i++) {
+                    clusters.union(first, duplicateIds.get(i));
                 }
             }
+            if (end == articles.size()) break;
+        }
+    }
 
-            if (bestCluster >= 0) {
-                clusters.get(bestCluster).add(i);
-                centers.set(bestCluster, computeCenter(clusters.get(bestCluster), embeddings));
-            } else {
-                List<Integer> newCluster = new ArrayList<>();
-                newCluster.add(i);
-                clusters.add(newCluster);
-                centers.add(emb.clone());
-            }
+    private List<List<Long>> requestDuplicateClusters(List<Article> batch) throws Exception {
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("model", aiConfig.getModel());
+        requestBody.put("temperature", 0);
+        ObjectNode responseFormat = requestBody.putObject("response_format");
+        responseFormat.put("type", "json_object");
+
+        ArrayNode messages = requestBody.putArray("messages");
+        messages.addObject().put("role", "system").put("content", AI_DEDUP_SYSTEM_PROMPT);
+        ObjectNode input = objectMapper.createObjectNode();
+        ArrayNode inputArticles = input.putArray("articles");
+        Set<Long> allowedIds = new HashSet<>();
+        for (Article article : batch) {
+            allowedIds.add(article.getId());
+            ObjectNode item = inputArticles.addObject();
+            item.put("id", article.getId());
+            item.put("title", truncate(article.getTitle(), AI_DEDUP_TITLE_LIMIT));
+            item.put("summary", truncate(article.getAiSummary(), AI_DEDUP_SUMMARY_LIMIT));
+        }
+        messages.addObject().put("role", "user").put("content", objectMapper.writeValueAsString(input));
+
+        HttpResponse<String> response = AiChatClient.send(
+                aiConfig, objectMapper, requestBody, AI_DEDUP_TIMEOUT, "AI语义去重");
+        if (response.statusCode() != 200) {
+            throw new IllegalStateException("chat API返回HTTP " + response.statusCode());
+        }
+        return parseDuplicateClusters(response.body(), allowedIds);
+    }
+
+    private List<List<Long>> parseDuplicateClusters(String responseBody, Set<Long> allowedIds)
+            throws Exception {
+        JsonNode root = objectMapper.readTree(responseBody);
+        JsonNode choices = root.path("choices");
+        if (!choices.isArray() || choices.isEmpty()) {
+            throw new IllegalArgumentException("chat响应缺少choices");
+        }
+        String content = choices.get(0).path("message").path("content").asText("");
+        if (content.isBlank()) {
+            throw new IllegalArgumentException("chat响应内容为空");
         }
 
-        log.info("Embedding聚类: {} 篇文章 → {} 个事件簇", articles.size(), clusters.size());
+        JsonNode result = objectMapper.readTree(content);
+        JsonNode clustersNode = result.get("clusters");
+        if (clustersNode == null || !clustersNode.isArray()) {
+            throw new IllegalArgumentException("chat响应缺少clusters数组");
+        }
 
-        Map<Long, List<String>> clusterLinks = new HashMap<>();
+        List<List<Long>> duplicateClusters = new ArrayList<>();
+        for (JsonNode clusterNode : clustersNode) {
+            if (!clusterNode.isArray()) {
+                throw new IllegalArgumentException("clusters成员不是数组");
+            }
+            LinkedHashSet<Long> ids = new LinkedHashSet<>();
+            for (JsonNode idNode : clusterNode) {
+                if (!idNode.canConvertToLong()) {
+                    throw new IllegalArgumentException("cluster包含无效文章id");
+                }
+                long id = idNode.longValue();
+                if (!allowedIds.contains(id)) {
+                    throw new IllegalArgumentException("cluster包含非输入文章id: " + id);
+                }
+                ids.add(id);
+            }
+            if (ids.size() < 2) {
+                throw new IllegalArgumentException("重复簇必须至少包含两个不同文章id");
+            }
+            duplicateClusters.add(new ArrayList<>(ids));
+        }
+        return duplicateClusters;
+    }
+
+    private List<Article> selectRepresentatives(List<Article> articles, DisjointSet clusters) {
+        Map<Long, Article> bestByRoot = new LinkedHashMap<>();
+        for (Article article : articles) {
+            Long root = clusters.find(article.getId());
+            Article current = bestByRoot.get(root);
+            if (current == null || isBetter(article, current)) {
+                bestByRoot.put(root, article);
+            }
+        }
+        return new ArrayList<>(bestByRoot.values());
+    }
+
+    private DedupResult selectAndMerge(List<Article> articles, DisjointSet clusters,
+                                       Map<Long, List<String>> titleClusterLinks) {
+        Map<Long, List<Article>> membersByRoot = new LinkedHashMap<>();
+        for (Article article : articles) {
+            membersByRoot.computeIfAbsent(clusters.find(article.getId()), key -> new ArrayList<>())
+                    .add(article);
+        }
+
         List<Article> result = new ArrayList<>();
-        for (List<Integer> cluster : clusters) {
-            Article best = cluster.stream()
-                    .map(articles::get)
-                    .min((a1, a2) -> isBetter(a1, a2) ? -1 : 1)
-                    .orElse(null);
-            if (best == null) continue;
+        Map<Long, List<String>> clusterLinks = new HashMap<>();
+        for (List<Article> members : membersByRoot.values()) {
+            Article best = members.get(0);
+            for (int i = 1; i < members.size(); i++) {
+                if (isBetter(members.get(i), best)) best = members.get(i);
+            }
             result.add(best);
 
             List<String> links = new ArrayList<>();
             List<String> bestTitleLinks = titleClusterLinks.get(best.getId());
             if (bestTitleLinks != null) links.addAll(bestTitleLinks);
-
-            for (int idx : cluster) {
-                Article a = articles.get(idx);
-                if (a.getId().equals(best.getId())) continue;
-                if (a.getLink() != null) links.add(a.getLink());
-                List<String> memberTitleLinks = titleClusterLinks.get(a.getId());
+            for (Article member : members) {
+                if (member.getId().equals(best.getId())) continue;
+                if (member.getLink() != null) links.add(member.getLink());
+                List<String> memberTitleLinks = titleClusterLinks.get(member.getId());
                 if (memberTitleLinks != null) links.addAll(memberTitleLinks);
             }
-            if (!links.isEmpty()) {
-                clusterLinks.put(best.getId(), links);
-            }
+            if (!links.isEmpty()) clusterLinks.put(best.getId(), links);
         }
         return new DedupResult(result, clusterLinks);
     }
 
-    private List<float[]> batchGetEmbeddings(List<String> inputs) {
-        List<float[]> allEmbeddings = new ArrayList<>();
-
-        for (int i = 0; i < inputs.size(); i += EMBEDDING_BATCH_SIZE) {
-            List<String> batch = inputs.subList(i, Math.min(i + EMBEDDING_BATCH_SIZE, inputs.size()));
-            List<float[]> batchResult = callEmbeddingApi(batch);
-            if (batchResult == null) return null;
-            allEmbeddings.addAll(batchResult);
-        }
-
-        return allEmbeddings;
-    }
-
-    private List<float[]> callEmbeddingApi(List<String> inputs) {
-        try {
-            String modelName = aiConfig.getEmbeddingModel() != null && !aiConfig.getEmbeddingModel().isBlank()
-                    ? aiConfig.getEmbeddingModel() : "text-embedding-3-small";
-
-            ObjectNode requestBody = objectMapper.createObjectNode();
-            requestBody.put("model", modelName);
-            var inputArray = requestBody.putArray("input");
-            inputs.forEach(inputArray::add);
-
-            String jsonBody = objectMapper.writeValueAsString(requestBody);
-
-            HttpClient client = AiConfig.getSharedHttpClient();
-
-            String baseUrl = aiConfig.getBaseUrl().replaceAll("/+$", "");
-            if (baseUrl.endsWith("/v1")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - 3);
-            }
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/v1/embeddings"))
-                    .timeout(Duration.ofSeconds(60))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + aiConfig.getKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200) {
-                log.warn("Embedding API返回 {}: {}", response.statusCode(), response.body());
-                return null;
-            }
-
-            return parseEmbeddings(response.body());
-        } catch (Exception e) {
-            log.warn("Embedding API调用失败: {}", e.getMessage(), e);
-            return null;
-        }
-    }
-
-    private List<float[]> parseEmbeddings(String responseBody) {
-        try {
-            JsonNode root = objectMapper.readTree(responseBody);
-            JsonNode data = root.get("data");
-            if (data == null || !data.isArray()) return null;
-
-            List<float[]> embeddings = new ArrayList<>();
-            for (JsonNode item : data) {
-                JsonNode embeddingNode = item.get("embedding");
-                if (embeddingNode == null || !embeddingNode.isArray()) return null;
-                float[] vec = new float[embeddingNode.size()];
-                for (int i = 0; i < embeddingNode.size(); i++) {
-                    vec[i] = (float) embeddingNode.get(i).asDouble();
-                }
-                embeddings.add(vec);
-            }
-            return embeddings;
-        } catch (Exception e) {
-            log.warn("Embedding响应解析失败: {}", e.getMessage(), e);
-            return null;
-        }
+    private String truncate(String value, int limit) {
+        if (value == null) return "";
+        return value.length() <= limit ? value : value.substring(0, limit);
     }
 
     private boolean isBetter(Article a1, Article a2) {
@@ -322,25 +303,24 @@ public class ArticleDedupService {
         return t1.isAfter(t2);
     }
 
-    static double cosineSimilarity(float[] a, float[] b) {
-        double dot = 0, normA = 0, normB = 0;
-        for (int i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-        double denom = Math.sqrt(normA) * Math.sqrt(normB);
-        return denom == 0 ? 0 : dot / denom;
-    }
+    private static final class DisjointSet {
+        private final Map<Long, Long> parent = new HashMap<>();
 
-    private float[] computeCenter(List<Integer> indices, List<float[]> embeddings) {
-        int dim = embeddings.get(indices.get(0)).length;
-        float[] center = new float[dim];
-        for (int idx : indices) {
-            float[] emb = embeddings.get(idx);
-            for (int j = 0; j < dim; j++) center[j] += emb[j];
+        private DisjointSet(Set<Long> ids) {
+            ids.forEach(id -> parent.put(id, id));
         }
-        for (int j = 0; j < dim; j++) center[j] /= indices.size();
-        return center;
+
+        private Long find(Long id) {
+            Long currentParent = parent.get(id);
+            if (currentParent == null) throw new IllegalArgumentException("未知文章id: " + id);
+            if (!currentParent.equals(id)) parent.put(id, find(currentParent));
+            return parent.get(id);
+        }
+
+        private void union(Long first, Long second) {
+            Long firstRoot = find(first);
+            Long secondRoot = find(second);
+            if (!firstRoot.equals(secondRoot)) parent.put(secondRoot, firstRoot);
+        }
     }
 }

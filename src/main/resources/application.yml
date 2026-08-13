@@ -41,4 +41,3 @@ ai:
     base-url: ${AI_API_BASE_URL:}
     key: ${AI_API_KEY:}
     model: ${AI_API_MODEL:}
-    embedding-model: ${AI_EMBEDDING_MODEL:}
