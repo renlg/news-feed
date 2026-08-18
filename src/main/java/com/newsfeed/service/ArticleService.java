@@ -9,13 +9,20 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class ArticleService {
 
+    private static final long CACHE_TTL_MS = 10 * 60 * 1000L;
+
     private final ArticleRepository articleRepository;
+
+    private volatile List<String> cachedCategories;
+    private volatile long cachedCategoriesTimestamp;
 
     /**
      * Persists articles using their unique link. AI-enabled sources are categorized later by
@@ -49,10 +56,24 @@ public class ArticleService {
     }
 
     public List<String> getCategories() {
-        return articleRepository.findDistinctAiCategoryDisplayNames().stream()
-                .filter(c -> c != null && !c.trim().isEmpty())
-                .distinct()
-                .sorted()
-                .toList();
+        List<String> local = cachedCategories;
+        if (local != null && System.currentTimeMillis() - cachedCategoriesTimestamp < CACHE_TTL_MS) {
+            return local;
+        }
+        synchronized (this) {
+            if (cachedCategories != null && System.currentTimeMillis() - cachedCategoriesTimestamp < CACHE_TTL_MS) {
+                return cachedCategories;
+            }
+            List<String> fresh = Collections.unmodifiableList(new ArrayList<>(
+                    articleRepository.findDistinctAiCategoryDisplayNames().stream()
+                            .filter(c -> c != null && !c.trim().isEmpty())
+                            .distinct()
+                            .sorted()
+                            .toList()
+            ));
+            cachedCategories = fresh;
+            cachedCategoriesTimestamp = System.currentTimeMillis();
+            return fresh;
+        }
     }
 }
