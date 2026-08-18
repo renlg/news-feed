@@ -49,7 +49,7 @@ public class FetchLogService {
     }
 
     public List<DailyStat> getDailyStats(int days) {
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
+        LocalDateTime startDate = LocalDate.now().minusDays(days - 1).atStartOfDay();
         List<Object[]> raw = fetchLogRepository.dailyStats(startDate);
 
         Map<LocalDate, DailyStat> statMap = new LinkedHashMap<>();
