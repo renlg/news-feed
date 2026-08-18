@@ -8,6 +8,7 @@ import com.newsfeed.service.TagService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -36,7 +37,8 @@ public class FeedConfigController {
             tagIds = null;
         }
 
-        Page<FeedSource> sourcePage = feedSourceService.findAll(tagIds, enabled, PageRequest.of(page, size));
+        Page<FeedSource> sourcePage = feedSourceService.findAll(tagIds, enabled,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
         model.addAttribute("sources", sourcePage.getContent());
         model.addAttribute("sourcePage", sourcePage);
         model.addAttribute("tagIds", tagIds);
