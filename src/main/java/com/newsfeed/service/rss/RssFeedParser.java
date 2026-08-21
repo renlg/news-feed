@@ -35,6 +35,7 @@ public class RssFeedParser implements FeedParser {
 
     private static final int MAX_REDIRECTS = 5;
     private static final long MAX_FEED_BYTES = 10L * 1024 * 1024;
+    private static final int MAX_AUTHOR_LENGTH = 255;
 
     @Override
     public String supportedProtocol() {
@@ -99,7 +100,7 @@ public class RssFeedParser implements FeedParser {
                             .link(entry.getLink())
                             .content(content)
                             .summary(summary)
-                            .author(entry.getAuthor())
+                            .author(truncateAuthor(entry.getAuthor()))
                             .publishedAt(publishedAt)
                             .fetchedAt(CanonicalTime.now())
                             .feedSourceId(source.getId())
@@ -126,6 +127,12 @@ public class RssFeedParser implements FeedParser {
             throw new RuntimeException("Failed to parse feed from " + url + ": " + e.getMessage(), e);
         }
         return articles;
+    }
+
+    private String truncateAuthor(String author) {
+        return author != null && author.length() > MAX_AUTHOR_LENGTH
+                ? author.substring(0, MAX_AUTHOR_LENGTH)
+                : author;
     }
 
     private HttpResponse<InputStream> fetchWithValidatedRedirects(HttpClient client, URI initialUri)
