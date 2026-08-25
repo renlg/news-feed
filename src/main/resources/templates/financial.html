@@ -7,6 +7,26 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="/css/style.css" rel="stylesheet">
+    <style>
+        .sortable-header .sort-label,
+        .sortable-header .sort-direction {
+            color: inherit;
+            background: none;
+            border: 0;
+            padding: 0;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .sortable-header .sort-label:hover,
+        .sortable-header .sort-direction:hover {
+            color: var(--bs-warning);
+        }
+
+        .sortable-header .sort-direction {
+            margin-left: .2rem;
+        }
+    </style>
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
@@ -55,6 +75,8 @@
     </div>
 
     <form method="get" action="/financial" class="card bg-dark border-secondary mb-4">
+        <input th:if="${!#strings.isEmpty(sort)}" type="hidden" name="sort" th:value="${sort}">
+        <input th:if="${!#strings.isEmpty(sort)}" type="hidden" name="dir" th:value="${dir}">
         <div class="card-body">
             <div class="row g-3 align-items-end">
                 <div class="col-md-3">
@@ -98,16 +120,36 @@
         <table class="table table-dark table-striped table-hover align-middle text-nowrap">
             <thead>
             <tr>
-                <th>代码</th>
-                <th>名称</th>
-                <th>报告期</th>
-                <th class="text-end">营收(亿)</th>
-                <th class="text-end">净利润(亿)</th>
-                <th class="text-end">EPS</th>
-                <th class="text-end">ROE%</th>
-                <th class="text-end">营收同比%</th>
-                <th class="text-end">净利同比%</th>
-                <th>公告日期</th>
+                <th class="sortable-header" data-sort-key="secCode">
+                    <button type="button" class="sort-label">代码</button><button th:if="${sort == 'secCode'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header" data-sort-key="secName">
+                    <button type="button" class="sort-label">名称</button><button th:if="${sort == 'secName'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header" data-sort-key="reportPeriod">
+                    <button type="button" class="sort-label">报告期</button><button th:if="${sort == 'reportPeriod'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header text-end" data-sort-key="totalOperateIncome">
+                    <button type="button" class="sort-label">营收(亿)</button><button th:if="${sort == 'totalOperateIncome'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header text-end" data-sort-key="parentNetProfit">
+                    <button type="button" class="sort-label">净利润(亿)</button><button th:if="${sort == 'parentNetProfit'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header text-end" data-sort-key="basicEps">
+                    <button type="button" class="sort-label">EPS</button><button th:if="${sort == 'basicEps'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header text-end" data-sort-key="weightAvgRoe">
+                    <button type="button" class="sort-label">ROE%</button><button th:if="${sort == 'weightAvgRoe'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header text-end" data-sort-key="ystz">
+                    <button type="button" class="sort-label">营收同比%</button><button th:if="${sort == 'ystz'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header text-end" data-sort-key="sjltz">
+                    <button type="button" class="sort-label">净利同比%</button><button th:if="${sort == 'sjltz'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
+                <th class="sortable-header" data-sort-key="noticeDate">
+                    <button type="button" class="sort-label">公告日期</button><button th:if="${sort == 'noticeDate'}" type="button" class="sort-direction" th:title="${dir == 'asc' ? '切换为降序' : '切换为升序'}" th:aria-label="${dir == 'asc' ? '切换为降序' : '切换为升序'}"><i th:class="${dir == 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'}"></i></button>
+                </th>
             </tr>
             </thead>
             <tbody>
@@ -140,24 +182,24 @@
         <nav aria-label="Financial report pages">
             <ul class="pagination pagination-sm mb-0">
                 <li class="page-item" th:classappend="${reports.first} ? 'disabled'">
-                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, page=${reports.number - 1})}" aria-label="Previous">&laquo;</a>
+                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, sort=${sort}, dir=${dir}, page=${reports.number - 1})}" aria-label="Previous">&laquo;</a>
                 </li>
                 <li class="page-item" th:classappend="${reports.number == 0} ? 'active'">
-                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, page=0)}">1</a>
+                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, sort=${sort}, dir=${dir}, page=0)}">1</a>
                 </li>
                 <li th:if="${reports.number > 3}" class="page-item disabled"><span class="page-link">…</span></li>
                 <li th:each="i : ${#numbers.sequence(reports.number - 1, reports.number + 1)}"
                     th:if="${i > 0 && i < reports.totalPages - 1}"
                     class="page-item" th:classappend="${i == reports.number} ? 'active'">
-                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, page=${i})}" th:text="${i + 1}">2</a>
+                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, sort=${sort}, dir=${dir}, page=${i})}" th:text="${i + 1}">2</a>
                 </li>
                 <li th:if="${reports.number < reports.totalPages - 4}" class="page-item disabled"><span class="page-link">…</span></li>
                 <li class="page-item" th:classappend="${reports.number == reports.totalPages - 1} ? 'active'">
-                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, page=${reports.totalPages - 1})}"
+                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, sort=${sort}, dir=${dir}, page=${reports.totalPages - 1})}"
                        th:text="${reports.totalPages}">Last</a>
                 </li>
                 <li class="page-item" th:classappend="${reports.last} ? 'disabled'">
-                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, page=${reports.number + 1})}" aria-label="Next">&raquo;</a>
+                    <a class="page-link" th:href="@{/financial(period=${period}, q=${q}, size=${size}, sort=${sort}, dir=${dir}, page=${reports.number + 1})}" aria-label="Next">&raquo;</a>
                 </li>
             </ul>
         </nav>
@@ -165,5 +207,35 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.querySelectorAll('.sortable-header').forEach(header => {
+        const sortKey = header.dataset.sortKey;
+        const label = header.querySelector('.sort-label');
+        const arrow = header.querySelector('.sort-direction');
+
+        label.addEventListener('click', () => {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('sort') === sortKey) {
+                params.delete('sort');
+                params.delete('dir');
+            } else {
+                params.set('sort', sortKey);
+                params.set('dir', 'asc');
+            }
+            params.set('page', '0');
+            window.location.assign('/financial?' + params.toString());
+        });
+
+        if (arrow) {
+            arrow.addEventListener('click', () => {
+                const params = new URLSearchParams(window.location.search);
+                params.set('sort', sortKey);
+                params.set('dir', params.get('dir') === 'desc' ? 'asc' : 'desc');
+                params.set('page', '0');
+                window.location.assign('/financial?' + params.toString());
+            });
+        }
+    });
+</script>
 </body>
 </html>
