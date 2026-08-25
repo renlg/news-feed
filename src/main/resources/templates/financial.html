@@ -57,12 +57,21 @@
             <h2 class="mb-1"><i class="bi bi-building me-2 text-warning"></i>财报</h2>
             <div class="text-muted">A股上市公司主要财务指标（数据来源：东方财富）</div>
         </div>
-        <form th:action="@{/financial/fetch}" method="post">
-            <button type="submit" class="btn btn-warning" th:disabled="${fetching}">
-                <i class="bi bi-arrow-clockwise me-1"></i>
-                <span th:text="${fetching} ? '抓取中…' : '手动刷新'">手动刷新</span>
-            </button>
-        </form>
+        <div class="d-flex flex-wrap gap-2">
+            <form th:if="${backfillEnabled and !fetching}" th:action="@{/financial/backfill}" method="post">
+                <input type="hidden" name="_csrf" th:value="${_csrf.token}">
+                <button type="submit" class="btn btn-outline-warning">
+                    <i class="bi bi-database-fill-down me-1"></i>补全历史数据
+                </button>
+            </form>
+            <form th:action="@{/financial/fetch}" method="post">
+                <input type="hidden" name="_csrf" th:value="${_csrf.token}">
+                <button type="submit" class="btn btn-warning" th:disabled="${fetching}">
+                    <i class="bi bi-arrow-clockwise me-1"></i>
+                    <span th:text="${fetching} ? '抓取中…' : '手动刷新'">手动刷新</span>
+                </button>
+            </form>
+        </div>
     </div>
 
     <div th:if="${successMsg}" class="alert alert-success alert-dismissible fade show" role="alert">

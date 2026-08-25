@@ -7,6 +7,7 @@ import com.newsfeed.model.FinancialReport;
 import com.newsfeed.repository.FinancialReportRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,8 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -33,10 +36,15 @@ public class FinancialReportFetchService {
     private static final int PAGE_SIZE = 50;
     private static final int REPORT_PERIODS_TO_FETCH = 3;
     private static final long PAGE_DELAY_MILLIS = 250L;
+    private static final LocalDate HISTORICAL_BACKFILL_START = LocalDate.of(2020, 3, 31);
 
     private final FinancialReportRepository financialReportRepository;
     private final ObjectMapper objectMapper;
     private final AtomicBoolean fetching = new AtomicBoolean(false);
+
+    @Value("${financial.backfill.enabled:true}")
+    private boolean historicalBackfillEnabled;
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(20))
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -81,26 +89,10 @@ public class FinancialReportFetchService {
                     break;
                 }
 
-                for (JsonNode row : rows) {
-                    String secCode = text(row, "SECURITY_CODE");
-                    LocalDate reportDate = date(row, "REPORTDATE");
-                    if (secCode == null || reportDate == null) {
-                        continue;
-                    }
-
-                    FinancialReport report = financialReportRepository
-                            .findBySecCodeAndReportDate(secCode, reportDate)
-                            .orElseGet(FinancialReport::new);
-                    boolean isNew = report.getId() == null;
-                    updateReport(report, row, secCode, reportDate);
-                    financialReportRepository.save(report);
-                    if (isNew) {
-                        added++;
-                    } else {
-                        updated++;
-                    }
-                    processed++;
-                }
+                FetchResult pageResult = upsertRows(rows);
+                added += pageResult.added();
+                updated += pageResult.updated();
+                processed += pageResult.processed();
 
                 pageNumber++;
                 if (pageNumber <= totalPages) {
@@ -115,12 +107,77 @@ public class FinancialReportFetchService {
         }
     }
 
+    public FetchResult fetchHistoricalBackfill() {
+        if (!historicalBackfillEnabled) {
+            throw new IllegalStateException("财报历史回填已通过配置禁用");
+        }
+        if (!fetching.compareAndSet(false, true)) {
+            return FetchResult.busy();
+        }
+
+        int added = 0;
+        int updated = 0;
+        int processed = 0;
+        try {
+            List<LocalDate> periodEnds = completedQuarterEnds(
+                    HISTORICAL_BACKFILL_START, CanonicalTime.today());
+            for (int periodIndex = 0; periodIndex < periodEnds.size(); periodIndex++) {
+                LocalDate periodEnd = periodEnds.get(periodIndex);
+                log.info("财报补历史: 第{}期/共{}期, 报告期 {}",
+                        periodIndex + 1, periodEnds.size(), periodEnd);
+
+                int pageNumber = 1;
+                int totalPages = 1;
+                while (pageNumber <= totalPages) {
+                    JsonNode result = fetchPageForPeriod(pageNumber, periodEnd);
+                    int totalRows = result.path("count").asInt(0);
+                    totalPages = Math.max(1, (totalRows + PAGE_SIZE - 1) / PAGE_SIZE);
+                    JsonNode rows = result.path("data");
+
+                    log.info("财报补历史: 报告期 {}, 第{}页/{}页, 共{}条",
+                            periodEnd, pageNumber, totalPages, totalRows);
+                    if (!rows.isArray() || rows.isEmpty()) {
+                        break;
+                    }
+
+                    FetchResult pageResult = upsertRows(rows);
+                    added += pageResult.added();
+                    updated += pageResult.updated();
+                    processed += pageResult.processed();
+
+                    pageNumber++;
+                    if (pageNumber <= totalPages) {
+                        pauseBetweenPages();
+                    }
+                }
+            }
+
+            log.info("财报补历史完成: 新增{}条, 更新{}条", added, updated);
+            return new FetchResult(false, added, updated, processed);
+        } finally {
+            fetching.set(false);
+        }
+    }
+
     public boolean isFetching() {
         return fetching.get();
     }
 
+    public boolean isHistoricalBackfillEnabled() {
+        return historicalBackfillEnabled;
+    }
+
     private JsonNode fetchPage(int pageNumber, LocalDate earliestReportDate) {
         String filter = "(REPORTDATE>='" + earliestReportDate + "')";
+        return fetchPage(pageNumber, filter);
+    }
+
+    private JsonNode fetchPageForPeriod(int pageNumber, LocalDate periodEnd) {
+        String filter = "(REPORTDATE='" + periodEnd + "')";
+        return fetchPage(pageNumber, filter);
+    }
+
+    private JsonNode fetchPage(int pageNumber, String filter) {
         String query = "reportName=" + encode("RPT_LICO_FN_CPD") +
                 "&columns=" + encode("ALL") +
                 "&filter=" + encode(filter) +
@@ -155,6 +212,33 @@ public class FinancialReportFetchService {
         } catch (IOException e) {
             throw new IllegalStateException("读取 EastMoney 财报数据失败", e);
         }
+    }
+
+    private FetchResult upsertRows(JsonNode rows) {
+        int added = 0;
+        int updated = 0;
+        int processed = 0;
+        for (JsonNode row : rows) {
+            String secCode = text(row, "SECURITY_CODE");
+            LocalDate reportDate = date(row, "REPORTDATE");
+            if (secCode == null || reportDate == null) {
+                continue;
+            }
+
+            FinancialReport report = financialReportRepository
+                    .findBySecCodeAndReportDate(secCode, reportDate)
+                    .orElseGet(FinancialReport::new);
+            boolean isNew = report.getId() == null;
+            updateReport(report, row, secCode, reportDate);
+            financialReportRepository.save(report);
+            if (isNew) {
+                added++;
+            } else {
+                updated++;
+            }
+            processed++;
+        }
+        return new FetchResult(false, added, updated, processed);
     }
 
     private void updateReport(FinancialReport report, JsonNode row, String secCode, LocalDate reportDate) {
@@ -263,6 +347,18 @@ public class FinancialReportFetchService {
         int year = Math.floorDiv(earliestIndex, 4);
         int quarter = Math.floorMod(earliestIndex, 4);
         return YearMonth.of(year, (quarter + 1) * 3).atEndOfMonth();
+    }
+
+    static List<LocalDate> completedQuarterEnds(LocalDate firstPeriodEnd, LocalDate today) {
+        LocalDate latestPeriodEnd = earliestOfLatestCompletedPeriods(today, 1);
+        List<LocalDate> periodEnds = new ArrayList<>();
+        YearMonth period = YearMonth.from(firstPeriodEnd);
+        YearMonth latest = YearMonth.from(latestPeriodEnd);
+        while (!period.isAfter(latest)) {
+            periodEnds.add(period.atEndOfMonth());
+            period = period.plusMonths(3);
+        }
+        return periodEnds;
     }
 
     public record FetchResult(boolean alreadyRunning, int added, int updated, int processed) {

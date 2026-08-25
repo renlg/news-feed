@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import java.util.List;
 import java.util.Map;
 
 @Controller
@@ -50,16 +51,21 @@ public class FinancialReportController {
                        Model model) {
         String activeSort = isValidSortKey(sortKey) ? sortKey : "";
         String activeDirection = "desc".equalsIgnoreCase(direction) ? "desc" : "asc";
+        List<String> periods = financialReportRepository.findDistinctReportPeriods();
+        String effectivePeriod = reportPeriod == null
+                ? periods.stream().findFirst().orElse("")
+                : reportPeriod;
         Page<FinancialReport> reports = findReports(
-                reportPeriod, keyword, page, size, activeSort, activeDirection);
+                effectivePeriod, keyword, page, size, activeSort, activeDirection);
         model.addAttribute("reports", reports);
-        model.addAttribute("periods", financialReportRepository.findDistinctReportPeriods());
-        model.addAttribute("period", reportPeriod != null ? reportPeriod : "");
+        model.addAttribute("periods", periods);
+        model.addAttribute("period", effectivePeriod);
         model.addAttribute("q", keyword != null ? keyword : "");
         model.addAttribute("size", reports.getSize());
         model.addAttribute("sort", activeSort);
         model.addAttribute("dir", activeDirection);
         model.addAttribute("fetching", financialReportFetchService.isFetching());
+        model.addAttribute("backfillEnabled", financialReportFetchService.isHistoricalBackfillEnabled());
         return "financial";
     }
 
@@ -89,6 +95,23 @@ public class FinancialReportController {
             }
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("errorMsg", "财报抓取失败：" + e.getMessage());
+        }
+        return "redirect:/financial";
+    }
+
+    @PostMapping("/backfill")
+    public String backfill(RedirectAttributes redirectAttributes) {
+        try {
+            FinancialReportFetchService.FetchResult result =
+                    financialReportFetchService.fetchHistoricalBackfill();
+            if (result.alreadyRunning()) {
+                redirectAttributes.addFlashAttribute("successMsg", "财报抓取任务正在运行，请稍后刷新");
+            } else {
+                redirectAttributes.addFlashAttribute("successMsg",
+                        "财报历史补全完成：新增 " + result.added() + " 条，更新 " + result.updated() + " 条");
+            }
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("errorMsg", "财报历史补全失败：" + e.getMessage());
         }
         return "redirect:/financial";
     }
