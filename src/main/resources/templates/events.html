@@ -123,7 +123,7 @@
                     <small class="text-muted font-monospace" th:text="${event.secCode}">600519</small>
                 </td>
                 <td>
-                    <a class="link-light text-decoration-none" th:href="@{/events/detail(id=${event.id})}"
+                    <a class="link-primary text-decoration-underline link-offset-2" th:href="@{/events/detail(id=${event.id})}"
                        th:text="${event.title}">公告标题</a>
                 </td>
                 <td><span class="badge text-bg-warning" th:text="${event.category}">回购</span></td>
