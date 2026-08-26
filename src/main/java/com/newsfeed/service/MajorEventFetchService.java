@@ -29,6 +29,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +44,11 @@ public class MajorEventFetchService {
     private static final String PDF_BASE_URL = "http://static.cninfo.com.cn/";
     private static final List<String> COLUMNS = List.of("sse", "szse");
     private static final int PAGE_SIZE = 50;
-    private static final long PAGE_DELAY_MILLIS = 300L;
+    private static final long PAGE_DELAY_MILLIS = 2000L;
+    private static final long COLUMN_SWITCH_DELAY_MILLIS = 5000L;
+    private static final int MAX_PAGE_ATTEMPTS = 3;
+    private static final long PAGE_RETRY_BASE_DELAY_MILLIS = 2000L;
+    private static final long RATE_LIMIT_DELAY_MILLIS = 30000L;
 
     private final MajorEventRepository majorEventRepository;
     private final ObjectMapper objectMapper;
@@ -53,7 +58,7 @@ public class MajorEventFetchService {
     private String pdfBaseDir;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(20))
+            .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
@@ -78,16 +83,36 @@ public class MajorEventFetchService {
         int added = 0;
         int updated = 0;
         int processed = 0;
+        List<String> failedDateColumns = new ArrayList<>();
         LocalDate endDate = CanonicalTime.today();
         LocalDate startDate = backfill ? endDate.minusDays(365) : endDate.minusDays(1);
         try {
             for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
-                for (String column : COLUMNS) {
-                    FetchResult result = fetchDate(column, date);
-                    added += result.added();
-                    updated += result.updated();
-                    processed += result.processed();
+                if (!date.equals(startDate)) {
+                    pauseBetweenColumns();
                 }
+                for (int columnIndex = 0; columnIndex < COLUMNS.size(); columnIndex++) {
+                    if (columnIndex > 0) {
+                        pauseBetweenColumns();
+                    }
+                    String column = COLUMNS.get(columnIndex);
+                    try {
+                        FetchResult result = fetchDate(column, date);
+                        added += result.added();
+                        updated += result.updated();
+                        processed += result.processed();
+                    } catch (RuntimeException e) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw e;
+                        }
+                        failedDateColumns.add(date + "/" + column);
+                        log.warn("重大事件抓取: 日期 {}, 市场 {} 失败, 已跳过并继续下一个", date, column, e);
+                    }
+                }
+            }
+            if (!failedDateColumns.isEmpty()) {
+                log.warn("重大事件抓取汇总: 共{}个日期/市场失败: {}",
+                        failedDateColumns.size(), String.join(", ", failedDateColumns));
             }
             log.info("重大事件抓取完成: 新增{}条, 更新{}条", added, updated);
             return new FetchResult(false, added, updated, processed);
@@ -115,9 +140,25 @@ public class MajorEventFetchService {
         int processed = 0;
         int pageNumber = 1;
         int totalPages = 1;
+        List<Integer> failedPages = new ArrayList<>();
 
         while (pageNumber <= totalPages) {
-            JsonNode root = fetchPage(column, date, pageNumber);
+            JsonNode root;
+            try {
+                root = fetchPage(column, date, pageNumber);
+            } catch (RuntimeException e) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw e;
+                }
+                failedPages.add(pageNumber);
+                log.warn("重大事件抓取: 日期 {}, 市场 {}, 第{}页失败, 已跳过待补抓",
+                        date, column, pageNumber, e);
+                pageNumber++;
+                if (pageNumber <= totalPages) {
+                    pauseBetweenPages();
+                }
+                continue;
+            }
             int total = root.path("totalAnnouncement").asInt(0);
             totalPages = Math.max(1, (total + PAGE_SIZE - 1) / PAGE_SIZE);
             JsonNode announcements = root.path("announcements");
@@ -137,6 +178,42 @@ public class MajorEventFetchService {
                 pauseBetweenPages();
             }
         }
+
+        int supplementIndex = 0;
+        while (supplementIndex < failedPages.size()) {
+            int failedPage = failedPages.get(supplementIndex);
+            pauseBetweenPages();
+            try {
+                JsonNode root = fetchPage(column, date, failedPage);
+                int total = root.path("totalAnnouncement").asInt(0);
+                int refreshedTotalPages = Math.max(1, (total + PAGE_SIZE - 1) / PAGE_SIZE);
+                JsonNode announcements = root.path("announcements");
+                log.info("重大事件抓取补抓: 日期 {}, 市场 {}, 第{}页/{}页, 共{}条",
+                        date, column, failedPage, refreshedTotalPages, total);
+                if (announcements.isArray() && !announcements.isEmpty()) {
+                    FetchResult pageResult = upsertAnnouncements(announcements);
+                    added += pageResult.added();
+                    updated += pageResult.updated();
+                    processed += pageResult.processed();
+                }
+                if (failedPage == 1 && refreshedTotalPages > totalPages) {
+                    for (int missingPage = totalPages + 1; missingPage <= refreshedTotalPages; missingPage++) {
+                        if (!failedPages.contains(missingPage)) {
+                            failedPages.add(missingPage);
+                        }
+                    }
+                    totalPages = refreshedTotalPages;
+                }
+                failedPages.remove(supplementIndex);
+            } catch (RuntimeException e) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw e;
+                }
+                log.warn("重大事件抓取: 日期 {}, 市场 {}, 第{}页补抓后仍失败, 留待下轮定时任务补抓",
+                        date, column, failedPage, e);
+                supplementIndex++;
+            }
+        }
         return new FetchResult(false, added, updated, processed);
     }
 
@@ -154,23 +231,43 @@ public class MajorEventFetchService {
                 .header("Accept", "application/json, text/javascript, */*; q=0.01")
                 .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
                 .header("X-Requested-With", "XMLHttpRequest")
-                .header("User-Agent", "Mozilla/5.0")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
                 .header("Referer", "http://www.cninfo.com.cn/")
                 .POST(HttpRequest.BodyPublishers.ofString(form))
                 .build();
 
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("CNINFO HTTP status " + response.statusCode());
+        for (int attempt = 1; attempt <= MAX_PAGE_ATTEMPTS; attempt++) {
+            try {
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                int statusCode = response.statusCode();
+                if (statusCode < 200 || statusCode >= 300) {
+                    IOException failure = new IOException("巨潮资讯 HTTP 状态码 " + statusCode);
+                    if (attempt == MAX_PAGE_ATTEMPTS) {
+                        throw new IllegalStateException("读取巨潮资讯公告失败", failure);
+                    }
+                    log.warn("重大事件抓取: 日期 {}, 市场 {}, 第{}页第{}次请求失败, HTTP状态码{}, 准备重试",
+                            date, column, pageNumber, attempt, statusCode);
+                    if (isRateLimitedStatus(statusCode)) {
+                        pauseForRateLimit();
+                    }
+                    pauseBeforePageRetry(attempt);
+                    continue;
+                }
+                return objectMapper.readTree(response.body());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("重大事件抓取被中断", e);
+            } catch (IOException e) {
+                if (attempt == MAX_PAGE_ATTEMPTS) {
+                    throw new IllegalStateException("读取巨潮资讯公告失败", e);
+                }
+                log.warn("重大事件抓取: 日期 {}, 市场 {}, 第{}页第{}次请求失败, 准备重试: {}",
+                        date, column, pageNumber, attempt, e.getMessage());
+                pauseBeforePageRetry(attempt);
             }
-            return objectMapper.readTree(response.body());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("重大事件抓取被中断", e);
-        } catch (IOException e) {
-            throw new IllegalStateException("读取巨潮资讯公告失败", e);
         }
+        throw new IllegalStateException("读取巨潮资讯公告失败");
     }
 
     private FetchResult upsertAnnouncements(JsonNode announcements) {
@@ -358,11 +455,32 @@ public class MajorEventFetchService {
     }
 
     private void pauseBetweenPages() {
+        pause(PAGE_DELAY_MILLIS, "重大事件抓取分页等待被中断");
+    }
+
+    private void pauseBetweenColumns() {
+        pause(COLUMN_SWITCH_DELAY_MILLIS, "重大事件抓取市场或日期切换等待被中断");
+    }
+
+    private void pauseBeforePageRetry(int failedAttempt) {
+        long delayMillis = PAGE_RETRY_BASE_DELAY_MILLIS * (1L << (failedAttempt - 1));
+        pause(delayMillis, "重大事件抓取页面重试等待被中断");
+    }
+
+    private void pauseForRateLimit() {
+        pause(RATE_LIMIT_DELAY_MILLIS, "重大事件抓取风控等待被中断");
+    }
+
+    private boolean isRateLimitedStatus(int statusCode) {
+        return statusCode == 429 || statusCode == 502 || statusCode == 503;
+    }
+
+    private void pause(long delayMillis, String interruptedMessage) {
         try {
-            Thread.sleep(PAGE_DELAY_MILLIS);
+            Thread.sleep(delayMillis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("重大事件抓取被中断", e);
+            throw new IllegalStateException(interruptedMessage, e);
         }
     }
 
