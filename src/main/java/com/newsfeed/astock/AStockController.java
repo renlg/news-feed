@@ -33,7 +33,7 @@ public class AStockController {
     public String list(@RequestParam(value = "board", defaultValue = AStockService.ALL_BOARDS) String board,
                        @RequestParam(value = "q", required = false) String keyword,
                        @RequestParam(value = "page", defaultValue = "0") int page,
-                       @RequestParam(value = "size", defaultValue = "50") int size,
+                       @RequestParam(value = "size", defaultValue = "10") int size,
                        Model model) {
         String activeBoard = AStockService.BOARDS.contains(board) ? board : AStockService.ALL_BOARDS;
         AStockService.StockPage stocks = aStockService.findStocks(activeBoard, keyword, page, size);
