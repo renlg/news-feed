@@ -21,6 +21,8 @@ public interface FinancialReportRepository extends JpaRepository<FinancialReport
 
     List<FinancialReport> findBySecCodeOrderByReportDateDesc(String secCode);
 
+    Page<FinancialReport> findBySecCodeOrderByReportDateDesc(String secCode, Pageable pageable);
+
     Page<FinancialReport> findAllByOrderByNoticeDateDesc(Pageable pageable);
 
     @Query("SELECT f FROM FinancialReport f WHERE " +
