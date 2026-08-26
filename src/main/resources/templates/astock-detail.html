@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title th:text="${stock.secName + '（' + stock.secCode + '）- A股'}">A股详情</title>
+    <title th:text="${stock.secName + '（' + stock.secCode + '）- A股'}" >A股详情</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="/css/style.css" rel="stylesheet">
     <style>
-        html { scroll-padding-top: 1rem; }
         .metric-card { min-height: 108px; }
         .metric-value { font-size: 1.35rem; font-weight: 600; }
-        .section-card { margin-bottom: 1.5rem; }
-        .section-card .card-header { font-weight: 600; }
         .table-responsive { max-height: 34rem; }
-        .section-nav { position: sticky; top: 0; z-index: 10; }
+        .nav-tabs .nav-link { color: var(--bs-secondary-color); }
+        .nav-tabs .nav-link.active { font-weight: 600; }
     </style>
 </head>
 <body>
@@ -48,121 +46,159 @@
         <div class="text-muted small">行情、公司与公告数据集中展示</div>
     </div>
 
-    <div class="section-nav bg-dark border border-secondary rounded p-2 mb-4 overflow-x-auto text-nowrap">
-        <a class="btn btn-sm btn-outline-secondary" href="#market">行情</a>
-        <a class="btn btn-sm btn-outline-secondary" href="#valuation">估值</a>
-        <a class="btn btn-sm btn-outline-secondary" href="#moneyflow">资金</a>
-        <a class="btn btn-sm btn-outline-secondary" href="#holders">股东</a>
-        <a class="btn btn-sm btn-outline-secondary" href="#margin">两融</a>
-        <a class="btn btn-sm btn-outline-secondary" href="#consensus">一致预期</a>
-        <a class="btn btn-sm btn-outline-secondary" href="#northbound">北向</a>
-        <a class="btn btn-sm btn-outline-secondary" href="#financial">财报</a>
-        <a class="btn btn-sm btn-outline-secondary" href="#events">重大事件</a>
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#pane-market" type="button" role="tab"><i class="bi bi-candlestick-chart me-1"></i>行情</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-valuation" type="button" role="tab"><i class="bi bi-calculator me-1"></i>估值</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-moneyflow" type="button" role="tab"><i class="bi bi-cash-stack me-1"></i>资金</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-holders" type="button" role="tab"><i class="bi bi-people me-1"></i>股东</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-margin" type="button" role="tab"><i class="bi bi-bank me-1"></i>两融</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-consensus" type="button" role="tab"><i class="bi bi-bar-chart-steps me-1"></i>一致预期</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-northbound" type="button" role="tab"><i class="bi bi-globe-asia-australia me-1"></i>北向</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-financial" type="button" role="tab"><i class="bi bi-file-earmark-spreadsheet me-1"></i>财报</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pane-events" type="button" role="tab"><i class="bi bi-exclamation-diamond me-1"></i>重大事件</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="pane-market" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-candlestick-chart me-2 text-warning"></i>日线行情 <small class="text-muted">最近 60 个交易日，新到旧</small></div>
+                <div class="card-body p-0">
+                    <div th:if="${#lists.isEmpty(klines)}" class="text-muted p-4">暂无日线行情</div>
+                    <div th:unless="${#lists.isEmpty(klines)}" class="table-responsive">
+                        <table class="table table-dark table-striped table-hover text-nowrap mb-0">
+                            <thead><tr><th>日期</th><th class="text-end">开盘</th><th class="text-end">收盘</th><th class="text-end">最高</th><th class="text-end">最低</th><th class="text-end">成交量(万)</th><th class="text-end">成交额(亿)</th><th class="text-end">涨跌幅</th></tr></thead>
+                            <tbody><tr th:each="row : ${klines}">
+                                <td th:text="${row.tradeDate}">2026-08-26</td>
+                                <td class="text-end" th:text="${row.open == null ? '-' : #numbers.formatDecimal(row.open,1,2)}">-</td>
+                                <td class="text-end" th:text="${row.close == null ? '-' : #numbers.formatDecimal(row.close,1,2)}">-</td>
+                                <td class="text-end" th:text="${row.high == null ? '-' : #numbers.formatDecimal(row.high,1,2)}">-</td>
+                                <td class="text-end" th:text="${row.low == null ? '-' : #numbers.formatDecimal(row.low,1,2)}">-</td>
+                                <td class="text-end" th:text="${row.volume == null ? '-' : #numbers.formatDecimal(row.volume / 10000.0,1,2)}">-</td>
+                                <td class="text-end" th:text="${row.amount == null ? '-' : #numbers.formatDecimal(row.amount / 100000000.0,1,2)}">-</td>
+                                <td class="text-end" th:classappend="${row.pctChg != null ? (row.pctChg < 0 ? 'text-success' : 'text-danger') : ''}" th:text="${row.pctChg == null ? '-' : #numbers.formatDecimal(row.pctChg,1,2) + '%'}">-</td>
+                            </tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-valuation" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-calculator me-2 text-warning"></i>估值 <small th:if="${valuation != null}" class="text-muted" th:text="${valuation.tradeDate}">日期</small></div>
+                <div class="card-body">
+                    <div th:if="${valuation == null}" class="text-muted">暂无估值数据</div>
+                    <div th:if="${valuation != null}" class="row g-3">
+                        <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">PE(TTM)</small><div class="metric-value" th:text="${valuation.peTtm == null ? '-' : #numbers.formatDecimal(valuation.peTtm,1,2)}">-</div></div></div>
+                        <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">PB</small><div class="metric-value" th:text="${valuation.pb == null ? '-' : #numbers.formatDecimal(valuation.pb,1,2)}">-</div></div></div>
+                        <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">PS(TTM)</small><div class="metric-value" th:text="${valuation.psTtm == null ? '-' : #numbers.formatDecimal(valuation.psTtm,1,2)}">-</div></div></div>
+                        <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">总市值(亿)</small><div class="metric-value" th:text="${valuation.totalMv == null ? '-' : #numbers.formatDecimal(valuation.totalMv / 100000000.0,1,2)}">-</div></div></div>
+                        <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">流通市值(亿)</small><div class="metric-value" th:text="${valuation.circMv == null ? '-' : #numbers.formatDecimal(valuation.circMv / 100000000.0,1,2)}">-</div></div></div>
+                        <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">股息率(%)</small><div class="metric-value" th:text="${valuation.divYield == null ? '-' : #numbers.formatDecimal(valuation.divYield,1,2)}">-</div></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-moneyflow" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-cash-stack me-2 text-warning"></i>主力资金流 <small class="text-muted">最近 30 个交易日，单位：亿元</small></div>
+                <div class="card-body p-0"><div th:if="${#lists.isEmpty(moneyFlows)}" class="text-muted p-4">暂无资金流数据</div>
+                    <div th:unless="${#lists.isEmpty(moneyFlows)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0">
+                        <thead><tr><th>日期</th><th class="text-end">主力净流入</th><th class="text-end">超大单</th><th class="text-end">大单</th><th class="text-end">中单</th><th class="text-end">小单</th></tr></thead>
+                        <tbody><tr th:each="row : ${moneyFlows}"><td th:text="${row.tradeDate}">-</td>
+                            <td class="text-end" th:text="${row.mainNet == null ? '-' : #numbers.formatDecimal(row.mainNet / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.superNet == null ? '-' : #numbers.formatDecimal(row.superNet / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.bigNet == null ? '-' : #numbers.formatDecimal(row.bigNet / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.midNet == null ? '-' : #numbers.formatDecimal(row.midNet / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.smallNet == null ? '-' : #numbers.formatDecimal(row.smallNet / 100000000.0,1,2)}">-</td>
+                        </tr></tbody></table></div></div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-holders" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-people me-2 text-warning"></i>股东户数</div>
+                <div class="card-body p-0"><div th:if="${#lists.isEmpty(holderNumbers)}" class="text-muted p-4">暂无股东户数数据</div>
+                    <div th:unless="${#lists.isEmpty(holderNumbers)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>截止日期</th><th class="text-end">股东户数(万户)</th><th class="text-end">户数变化(%)</th><th class="text-end">户均持股</th></tr></thead><tbody>
+                        <tr th:each="row : ${holderNumbers}"><td th:text="${row.endDate}">-</td><td class="text-end" th:text="${row.holderNum == null ? '-' : #numbers.formatDecimal(row.holderNum / 10000.0,1,2)}">-</td><td class="text-end" th:text="${row.holderNumChg == null ? '-' : #numbers.formatDecimal(row.holderNumChg,1,2)}">-</td><td class="text-end" th:text="${row.avgHold == null ? '-' : #numbers.formatDecimal(row.avgHold,1,0)}">-</td></tr>
+                    </tbody></table></div></div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-margin" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-bank me-2 text-warning"></i>融资融券 <small class="text-muted">金额单位：亿元</small></div>
+                <div class="card-body p-0"><div th:if="${#lists.isEmpty(margins)}" class="text-muted p-4">暂无融资融券数据</div>
+                    <div th:unless="${#lists.isEmpty(margins)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>日期</th><th class="text-end">融资余额</th><th class="text-end">融券余量</th><th class="text-end">两融余额</th><th class="text-end">融券余额</th><th class="text-end">融券卖出量</th><th class="text-end">两融变化</th></tr></thead><tbody>
+                        <tr th:each="row : ${margins}"><td th:text="${row.tradeDate}">-</td><td class="text-end" th:text="${row.rzBalance == null ? '-' : #numbers.formatDecimal(row.rzBalance / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.rqVolume == null ? '-' : #numbers.formatDecimal(row.rqVolume,1,0)}">-</td><td class="text-end" th:text="${row.rzrqBalance == null ? '-' : #numbers.formatDecimal(row.rzrqBalance / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.rqBalance == null ? '-' : #numbers.formatDecimal(row.rqBalance / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.rqMcl == null ? '-' : #numbers.formatDecimal(row.rqMcl,1,0)}">-</td><td class="text-end" th:text="${row.rzrqChg == null ? '-' : #numbers.formatDecimal(row.rzrqChg / 100000000.0,1,2)}">-</td></tr>
+                    </tbody></table></div></div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-consensus" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-bar-chart-steps me-2 text-warning"></i>一致预期 / 盈利预测</div>
+                <div class="card-body">
+                    <div th:if="${consensus == null}" class="text-muted mb-3">暂无一致预期数据</div>
+                    <div th:if="${consensus != null}">
+                        <div class="row g-3 mb-3"><div class="col-md-3"><strong>评级机构：</strong><span th:text="${consensus.ratingOrgNum == null ? '-' : #numbers.formatDecimal(consensus.ratingOrgNum,1,0)}">-</span></div><div class="col-md-3"><strong>买入 / 增持：</strong><span th:text="${(consensus.ratingBuy == null ? '-' : #numbers.formatDecimal(consensus.ratingBuy,1,0)) + ' / ' + (consensus.ratingAdd == null ? '-' : #numbers.formatDecimal(consensus.ratingAdd,1,0))}">-</span></div><div class="col-md-3"><strong>中性：</strong><span th:text="${consensus.ratingNeutral == null ? '-' : #numbers.formatDecimal(consensus.ratingNeutral,1,0)}">-</span></div><div class="col-md-3"><strong>目标价：</strong><span th:text="${(consensus.aimpriceMin == null ? '-' : #numbers.formatDecimal(consensus.aimpriceMin,1,2)) + ' ～ ' + (consensus.aimpriceMax == null ? '-' : #numbers.formatDecimal(consensus.aimpriceMax,1,2))}">-</span></div></div>
+                        <div class="table-responsive mb-4"><table class="table table-dark table-bordered text-center mb-0"><thead><tr><th th:text="${consensus.year1 ?: '年度1'}">年度1</th><th th:text="${consensus.year2 ?: '年度2'}">年度2</th><th th:text="${consensus.year3 ?: '年度3'}">年度3</th><th th:text="${consensus.year4 ?: '年度4'}">年度4</th></tr></thead><tbody><tr><td th:text="${consensus.eps1 == null ? '-' : #numbers.formatDecimal(consensus.eps1,1,2)}">-</td><td th:text="${consensus.eps2 == null ? '-' : #numbers.formatDecimal(consensus.eps2,1,2)}">-</td><td th:text="${consensus.eps3 == null ? '-' : #numbers.formatDecimal(consensus.eps3,1,2)}">-</td><td th:text="${consensus.eps4 == null ? '-' : #numbers.formatDecimal(consensus.eps4,1,2)}">-</td></tr></tbody></table></div>
+                    </div>
+                    <h3 class="h6">业绩预告</h3><div th:if="${#lists.isEmpty(forecasts)}" class="text-muted">暂无业绩预告</div>
+                    <div th:unless="${#lists.isEmpty(forecasts)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>报告期</th><th>公告日期</th><th>预告类型</th><th class="text-end">预测值(亿)</th><th class="text-end">同比(%)</th></tr></thead><tbody><tr th:each="row : ${forecasts}"><td th:text="${row.reportDate}">-</td><td th:text="${row.noticeDate}">-</td><td th:text="${row.fcType}">-</td><td class="text-end" th:text="${row.fcValue == null ? '-' : #numbers.formatDecimal(row.fcValue / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.yoy == null ? '-' : #numbers.formatDecimal(row.yoy,1,2)}">-</td></tr></tbody></table></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-northbound" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-globe-asia-australia me-2 text-warning"></i>北向持股</div>
+                <div class="card-body p-0"><div th:if="${#lists.isEmpty(northboundHoldings)}" class="text-muted p-4">暂无北向持股数据</div>
+                    <div th:unless="${#lists.isEmpty(northboundHoldings)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>截止日期</th><th>类型</th><th class="text-end">持股数(万股)</th><th class="text-end">占流通股(%)</th><th class="text-end">持股市值(亿)</th><th class="text-end">机构数</th><th class="text-end">占总股本(%)</th></tr></thead><tbody>
+                        <tr th:each="row : ${northboundHoldings}"><td th:text="${row.endDate}">-</td><td th:text="${row.dateType}">-</td><td class="text-end" th:text="${row.holdShares == null ? '-' : #numbers.formatDecimal(row.holdShares / 10000.0,1,2)}">-</td><td class="text-end" th:text="${row.holdSharesRatio == null ? '-' : #numbers.formatDecimal(row.holdSharesRatio,1,2)}">-</td><td class="text-end" th:text="${row.holdMarketCap == null ? '-' : #numbers.formatDecimal(row.holdMarketCap / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.orgQuantity == null ? '-' : #numbers.formatDecimal(row.orgQuantity,1,0)}">-</td><td class="text-end" th:text="${row.totalSharesRatio == null ? '-' : #numbers.formatDecimal(row.totalSharesRatio,1,2)}">-</td></tr>
+                    </tbody></table></div></div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-financial" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-file-earmark-spreadsheet me-2 text-warning"></i>财报</div>
+                <div class="card-body p-0"><div th:if="${#lists.isEmpty(financialReports)}" class="text-muted p-4">暂无财报数据</div>
+                    <div th:unless="${#lists.isEmpty(financialReports)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>报告期</th><th>类型</th><th>公告日期</th><th class="text-end">营收(亿)</th><th class="text-end">净利润(亿)</th><th class="text-end">EPS</th><th class="text-end">ROE(%)</th><th class="text-end">营收同比(%)</th><th class="text-end">净利同比(%)</th></tr></thead><tbody>
+                        <tr th:each="row : ${financialReports}"><td th:text="${row.reportPeriod}">-</td><td th:text="${row.reportType ?: '-'}">-</td><td th:text="${row.noticeDate ?: '-'}">-</td><td class="text-end" th:text="${row.totalOperateIncome == null ? '-' : #numbers.formatDecimal(row.totalOperateIncome / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.parentNetProfit == null ? '-' : #numbers.formatDecimal(row.parentNetProfit / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.basicEps == null ? '-' : #numbers.formatDecimal(row.basicEps,1,2)}">-</td><td class="text-end" th:text="${row.weightAvgRoe == null ? '-' : #numbers.formatDecimal(row.weightAvgRoe,1,2)}">-</td><td class="text-end" th:text="${row.ystz == null ? '-' : #numbers.formatDecimal(row.ystz,1,2)}">-</td><td class="text-end" th:text="${row.sjltz == null ? '-' : #numbers.formatDecimal(row.sjltz,1,2)}">-</td></tr>
+                    </tbody></table></div></div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-events" role="tabpanel">
+            <div class="card bg-dark border-secondary">
+                <div class="card-header"><i class="bi bi-exclamation-diamond me-2 text-warning"></i>重大事件</div>
+                <div class="card-body p-0"><div th:if="${#lists.isEmpty(majorEvents)}" class="text-muted p-4">暂无重大事件</div>
+                    <div th:unless="${#lists.isEmpty(majorEvents)}" class="table-responsive"><table class="table table-dark table-striped align-middle mb-0"><thead><tr><th class="text-nowrap">日期</th><th class="text-nowrap">分类</th><th>标题</th><th class="text-nowrap">公告原文</th></tr></thead><tbody>
+                        <tr th:each="event : ${majorEvents}"><td class="text-nowrap" th:text="${event.eventDate}">-</td><td><span class="badge text-bg-warning" th:text="${event.category}">-</span></td><td th:text="${event.title}">-</td><td>
+                            <a th:if="${!#strings.isEmpty(event.pdfUrl)}" th:href="${#strings.startsWith(event.pdfUrl, 'http') ? event.pdfUrl : 'http://static.cninfo.com.cn/' + event.pdfUrl}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning"><i class="bi bi-box-arrow-up-right me-1"></i>查看PDF</a>
+                            <a th:if="${#strings.isEmpty(event.pdfUrl) && !#strings.isEmpty(event.pdfPath)}" th:href="@{/events/pdf/{id}(id=${event.id})}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning"><i class="bi bi-file-earmark-pdf me-1"></i>查看PDF</a>
+                            <span th:if="${#strings.isEmpty(event.pdfPath) && #strings.isEmpty(event.pdfUrl)}" class="text-muted">-</span>
+                        </td></tr>
+                    </tbody></table></div></div>
+            </div>
+        </div>
     </div>
-
-    <section id="market" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-candlestick-chart me-2 text-warning"></i>日线行情 <small class="text-muted">最近 60 个交易日，新到旧</small></div>
-        <div class="card-body p-0">
-            <div th:if="${#lists.isEmpty(klines)}" class="text-muted p-4">暂无日线行情</div>
-            <div th:unless="${#lists.isEmpty(klines)}" class="table-responsive">
-                <table class="table table-dark table-striped table-hover text-nowrap mb-0">
-                    <thead><tr><th>日期</th><th class="text-end">开盘</th><th class="text-end">收盘</th><th class="text-end">最高</th><th class="text-end">最低</th><th class="text-end">成交量(万)</th><th class="text-end">成交额(亿)</th><th class="text-end">涨跌幅</th></tr></thead>
-                    <tbody><tr th:each="row : ${klines}">
-                        <td th:text="${row.tradeDate}">2026-08-26</td>
-                        <td class="text-end" th:text="${row.open == null ? '-' : #numbers.formatDecimal(row.open,1,2)}">-</td>
-                        <td class="text-end" th:text="${row.close == null ? '-' : #numbers.formatDecimal(row.close,1,2)}">-</td>
-                        <td class="text-end" th:text="${row.high == null ? '-' : #numbers.formatDecimal(row.high,1,2)}">-</td>
-                        <td class="text-end" th:text="${row.low == null ? '-' : #numbers.formatDecimal(row.low,1,2)}">-</td>
-                        <td class="text-end" th:text="${row.volume == null ? '-' : #numbers.formatDecimal(row.volume / 10000.0,1,2)}">-</td>
-                        <td class="text-end" th:text="${row.amount == null ? '-' : #numbers.formatDecimal(row.amount / 100000000.0,1,2)}">-</td>
-                        <td class="text-end" th:classappend="${row.pctChg != null ? (row.pctChg < 0 ? 'text-success' : 'text-danger') : ''}" th:text="${row.pctChg == null ? '-' : #numbers.formatDecimal(row.pctChg,1,2) + '%'}">-</td>
-                    </tr></tbody>
-                </table>
-            </div>
-        </div>
-    </section>
-
-    <section id="valuation" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-calculator me-2 text-warning"></i>估值 <small th:if="${valuation != null}" class="text-muted" th:text="${valuation.tradeDate}">日期</small></div>
-        <div class="card-body">
-            <div th:if="${valuation == null}" class="text-muted">暂无估值数据</div>
-            <div th:if="${valuation != null}" class="row g-3">
-                <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">PE(TTM)</small><div class="metric-value" th:text="${valuation.peTtm == null ? '-' : #numbers.formatDecimal(valuation.peTtm,1,2)}">-</div></div></div>
-                <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">PB</small><div class="metric-value" th:text="${valuation.pb == null ? '-' : #numbers.formatDecimal(valuation.pb,1,2)}">-</div></div></div>
-                <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">PS(TTM)</small><div class="metric-value" th:text="${valuation.psTtm == null ? '-' : #numbers.formatDecimal(valuation.psTtm,1,2)}">-</div></div></div>
-                <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">总市值(亿)</small><div class="metric-value" th:text="${valuation.totalMv == null ? '-' : #numbers.formatDecimal(valuation.totalMv / 100000000.0,1,2)}">-</div></div></div>
-                <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">流通市值(亿)</small><div class="metric-value" th:text="${valuation.circMv == null ? '-' : #numbers.formatDecimal(valuation.circMv / 100000000.0,1,2)}">-</div></div></div>
-                <div class="col-6 col-lg"><div class="card metric-card bg-black border-secondary p-3"><small class="text-muted">股息率(%)</small><div class="metric-value" th:text="${valuation.divYield == null ? '-' : #numbers.formatDecimal(valuation.divYield,1,2)}">-</div></div></div>
-            </div>
-        </div>
-    </section>
-
-    <section id="moneyflow" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-cash-stack me-2 text-warning"></i>主力资金流 <small class="text-muted">最近 30 个交易日，单位：亿元</small></div>
-        <div class="card-body p-0"><div th:if="${#lists.isEmpty(moneyFlows)}" class="text-muted p-4">暂无资金流数据</div>
-            <div th:unless="${#lists.isEmpty(moneyFlows)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0">
-                <thead><tr><th>日期</th><th class="text-end">主力净流入</th><th class="text-end">超大单</th><th class="text-end">大单</th><th class="text-end">中单</th><th class="text-end">小单</th></tr></thead>
-                <tbody><tr th:each="row : ${moneyFlows}"><td th:text="${row.tradeDate}">-</td>
-                    <td class="text-end" th:text="${row.mainNet == null ? '-' : #numbers.formatDecimal(row.mainNet / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.superNet == null ? '-' : #numbers.formatDecimal(row.superNet / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.bigNet == null ? '-' : #numbers.formatDecimal(row.bigNet / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.midNet == null ? '-' : #numbers.formatDecimal(row.midNet / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.smallNet == null ? '-' : #numbers.formatDecimal(row.smallNet / 100000000.0,1,2)}">-</td>
-                </tr></tbody></table></div></div>
-    </section>
-
-    <section id="holders" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-people me-2 text-warning"></i>股东户数</div>
-        <div class="card-body p-0"><div th:if="${#lists.isEmpty(holderNumbers)}" class="text-muted p-4">暂无股东户数数据</div>
-            <div th:unless="${#lists.isEmpty(holderNumbers)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>截止日期</th><th class="text-end">股东户数(万户)</th><th class="text-end">户数变化(%)</th><th class="text-end">户均持股</th></tr></thead><tbody>
-                <tr th:each="row : ${holderNumbers}"><td th:text="${row.endDate}">-</td><td class="text-end" th:text="${row.holderNum == null ? '-' : #numbers.formatDecimal(row.holderNum / 10000.0,1,2)}">-</td><td class="text-end" th:text="${row.holderNumChg == null ? '-' : #numbers.formatDecimal(row.holderNumChg,1,2)}">-</td><td class="text-end" th:text="${row.avgHold == null ? '-' : #numbers.formatDecimal(row.avgHold,1,0)}">-</td></tr>
-            </tbody></table></div></div>
-    </section>
-
-    <section id="margin" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-bank me-2 text-warning"></i>融资融券 <small class="text-muted">金额单位：亿元</small></div>
-        <div class="card-body p-0"><div th:if="${#lists.isEmpty(margins)}" class="text-muted p-4">暂无融资融券数据</div>
-            <div th:unless="${#lists.isEmpty(margins)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>日期</th><th class="text-end">融资余额</th><th class="text-end">融券余量</th><th class="text-end">两融余额</th><th class="text-end">融券余额</th><th class="text-end">融券卖出量</th><th class="text-end">两融变化</th></tr></thead><tbody>
-                <tr th:each="row : ${margins}"><td th:text="${row.tradeDate}">-</td><td class="text-end" th:text="${row.rzBalance == null ? '-' : #numbers.formatDecimal(row.rzBalance / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.rqVolume == null ? '-' : #numbers.formatDecimal(row.rqVolume,1,0)}">-</td><td class="text-end" th:text="${row.rzrqBalance == null ? '-' : #numbers.formatDecimal(row.rzrqBalance / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.rqBalance == null ? '-' : #numbers.formatDecimal(row.rqBalance / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.rqMcl == null ? '-' : #numbers.formatDecimal(row.rqMcl,1,0)}">-</td><td class="text-end" th:text="${row.rzrqChg == null ? '-' : #numbers.formatDecimal(row.rzrqChg / 100000000.0,1,2)}">-</td></tr>
-            </tbody></table></div></div>
-    </section>
-
-    <section id="consensus" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-bar-chart-steps me-2 text-warning"></i>一致预期 / 盈利预测</div>
-        <div class="card-body">
-            <div th:if="${consensus == null}" class="text-muted mb-3">暂无一致预期数据</div>
-            <div th:if="${consensus != null}">
-                <div class="row g-3 mb-3"><div class="col-md-3"><strong>评级机构：</strong><span th:text="${consensus.ratingOrgNum == null ? '-' : #numbers.formatDecimal(consensus.ratingOrgNum,1,0)}">-</span></div><div class="col-md-3"><strong>买入 / 增持：</strong><span th:text="${(consensus.ratingBuy == null ? '-' : #numbers.formatDecimal(consensus.ratingBuy,1,0)) + ' / ' + (consensus.ratingAdd == null ? '-' : #numbers.formatDecimal(consensus.ratingAdd,1,0))}">-</span></div><div class="col-md-3"><strong>中性：</strong><span th:text="${consensus.ratingNeutral == null ? '-' : #numbers.formatDecimal(consensus.ratingNeutral,1,0)}">-</span></div><div class="col-md-3"><strong>目标价：</strong><span th:text="${(consensus.aimpriceMin == null ? '-' : #numbers.formatDecimal(consensus.aimpriceMin,1,2)) + ' ～ ' + (consensus.aimpriceMax == null ? '-' : #numbers.formatDecimal(consensus.aimpriceMax,1,2))}">-</span></div></div>
-                <div class="table-responsive mb-4"><table class="table table-dark table-bordered text-center mb-0"><thead><tr><th th:text="${consensus.year1 ?: '年度1'}">年度1</th><th th:text="${consensus.year2 ?: '年度2'}">年度2</th><th th:text="${consensus.year3 ?: '年度3'}">年度3</th><th th:text="${consensus.year4 ?: '年度4'}">年度4</th></tr></thead><tbody><tr><td th:text="${consensus.eps1 == null ? '-' : #numbers.formatDecimal(consensus.eps1,1,2)}">-</td><td th:text="${consensus.eps2 == null ? '-' : #numbers.formatDecimal(consensus.eps2,1,2)}">-</td><td th:text="${consensus.eps3 == null ? '-' : #numbers.formatDecimal(consensus.eps3,1,2)}">-</td><td th:text="${consensus.eps4 == null ? '-' : #numbers.formatDecimal(consensus.eps4,1,2)}">-</td></tr></tbody></table></div>
-            </div>
-            <h3 class="h6">业绩预告</h3><div th:if="${#lists.isEmpty(forecasts)}" class="text-muted">暂无业绩预告</div>
-            <div th:unless="${#lists.isEmpty(forecasts)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>报告期</th><th>公告日期</th><th>预告类型</th><th class="text-end">预测值(亿)</th><th class="text-end">同比(%)</th></tr></thead><tbody><tr th:each="row : ${forecasts}"><td th:text="${row.reportDate}">-</td><td th:text="${row.noticeDate}">-</td><td th:text="${row.fcType}">-</td><td class="text-end" th:text="${row.fcValue == null ? '-' : #numbers.formatDecimal(row.fcValue / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.yoy == null ? '-' : #numbers.formatDecimal(row.yoy,1,2)}">-</td></tr></tbody></table></div>
-        </div>
-    </section>
-
-    <section id="northbound" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-globe-asia-australia me-2 text-warning"></i>北向持股</div>
-        <div class="card-body p-0"><div th:if="${#lists.isEmpty(northboundHoldings)}" class="text-muted p-4">暂无北向持股数据</div>
-            <div th:unless="${#lists.isEmpty(northboundHoldings)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>截止日期</th><th>类型</th><th class="text-end">持股数(万股)</th><th class="text-end">占流通股(%)</th><th class="text-end">持股市值(亿)</th><th class="text-end">机构数</th><th class="text-end">占总股本(%)</th></tr></thead><tbody>
-                <tr th:each="row : ${northboundHoldings}"><td th:text="${row.endDate}">-</td><td th:text="${row.dateType}">-</td><td class="text-end" th:text="${row.holdShares == null ? '-' : #numbers.formatDecimal(row.holdShares / 10000.0,1,2)}">-</td><td class="text-end" th:text="${row.holdSharesRatio == null ? '-' : #numbers.formatDecimal(row.holdSharesRatio,1,2)}">-</td><td class="text-end" th:text="${row.holdMarketCap == null ? '-' : #numbers.formatDecimal(row.holdMarketCap / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.orgQuantity == null ? '-' : #numbers.formatDecimal(row.orgQuantity,1,0)}">-</td><td class="text-end" th:text="${row.totalSharesRatio == null ? '-' : #numbers.formatDecimal(row.totalSharesRatio,1,2)}">-</td></tr>
-            </tbody></table></div></div>
-    </section>
-
-    <section id="financial" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-file-earmark-spreadsheet me-2 text-warning"></i>财报</div>
-        <div class="card-body p-0"><div th:if="${#lists.isEmpty(financialReports)}" class="text-muted p-4">暂无财报数据</div>
-            <div th:unless="${#lists.isEmpty(financialReports)}" class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>报告期</th><th>类型</th><th>公告日期</th><th class="text-end">营收(亿)</th><th class="text-end">净利润(亿)</th><th class="text-end">EPS</th><th class="text-end">ROE(%)</th><th class="text-end">营收同比(%)</th><th class="text-end">净利同比(%)</th></tr></thead><tbody>
-                <tr th:each="row : ${financialReports}"><td th:text="${row.reportPeriod}">-</td><td th:text="${row.reportType ?: '-'}">-</td><td th:text="${row.noticeDate ?: '-'}">-</td><td class="text-end" th:text="${row.totalOperateIncome == null ? '-' : #numbers.formatDecimal(row.totalOperateIncome / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.parentNetProfit == null ? '-' : #numbers.formatDecimal(row.parentNetProfit / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.basicEps == null ? '-' : #numbers.formatDecimal(row.basicEps,1,2)}">-</td><td class="text-end" th:text="${row.weightAvgRoe == null ? '-' : #numbers.formatDecimal(row.weightAvgRoe,1,2)}">-</td><td class="text-end" th:text="${row.ystz == null ? '-' : #numbers.formatDecimal(row.ystz,1,2)}">-</td><td class="text-end" th:text="${row.sjltz == null ? '-' : #numbers.formatDecimal(row.sjltz,1,2)}">-</td></tr>
-            </tbody></table></div></div>
-    </section>
-
-    <section id="events" class="card bg-dark border-secondary section-card">
-        <div class="card-header"><i class="bi bi-exclamation-diamond me-2 text-warning"></i>重大事件</div>
-        <div class="card-body p-0"><div th:if="${#lists.isEmpty(majorEvents)}" class="text-muted p-4">暂无重大事件</div>
-            <div th:unless="${#lists.isEmpty(majorEvents)}" class="table-responsive"><table class="table table-dark table-striped align-middle mb-0"><thead><tr><th class="text-nowrap">日期</th><th class="text-nowrap">分类</th><th>标题</th><th class="text-nowrap">公告原文</th></tr></thead><tbody>
-                <tr th:each="event : ${majorEvents}"><td class="text-nowrap" th:text="${event.eventDate}">-</td><td><span class="badge text-bg-warning" th:text="${event.category}">-</span></td><td th:text="${event.title}">-</td><td>
-                    <a th:if="${!#strings.isEmpty(event.pdfUrl)}" th:href="${#strings.startsWith(event.pdfUrl, 'http') ? event.pdfUrl : 'http://static.cninfo.com.cn/' + event.pdfUrl}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning"><i class="bi bi-box-arrow-up-right me-1"></i>查看PDF</a>
-                    <a th:if="${#strings.isEmpty(event.pdfUrl) && !#strings.isEmpty(event.pdfPath)}" th:href="@{/events/pdf/{id}(id=${event.id})}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning"><i class="bi bi-file-earmark-pdf me-1"></i>查看PDF</a>
-                    <span th:if="${#strings.isEmpty(event.pdfPath) && #strings.isEmpty(event.pdfUrl)}" class="text-muted">-</span>
-                </td></tr>
-            </tbody></table></div></div>
-    </section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
