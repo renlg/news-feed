@@ -30,6 +30,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/css/**", "/js/**", "/login").permitAll()
                 .requestMatchers("/h2-console/**").authenticated()
+                .requestMatchers("/astocks/**").authenticated()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/digest", "/digest/{date}", "/digest/generation-status", "/digest/generation-error", "/search", "/error").permitAll()
                 .requestMatchers("/feeds/**", "/api/feeds/**", "/reports/**", "/tags/**", "/digest/**").authenticated()
                 .anyRequest().authenticated()

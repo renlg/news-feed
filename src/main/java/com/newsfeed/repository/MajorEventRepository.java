@@ -16,6 +16,8 @@ public interface MajorEventRepository extends JpaRepository<MajorEvent, Long> {
 
     Optional<MajorEvent> findBySecCodeAndTitle(String secCode, String title);
 
+    List<MajorEvent> findBySecCodeOrderByEventDateDescIdDesc(String secCode);
+
     List<MajorEvent> findByCategory(String category);
 
     long countByCategory(String category);

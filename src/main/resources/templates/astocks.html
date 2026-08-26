@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股 - NewsFeed</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="/css/style.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/feeds">
+            <i class="bi bi-rss-fill me-2 text-warning"></i>NewsFeed
+        </a>
+        <div class="navbar-nav ms-auto">
+            <a class="nav-link" href="/feeds">Sources</a>
+            <a class="nav-link" href="/search">Search</a>
+            <a class="nav-link" href="/digest">Daily Digest</a>
+            <a class="nav-link" href="/reports">Reports</a>
+            <a class="nav-link active" href="/astocks">A股</a>
+            <a class="nav-link" href="/reports/backups">Backups</a>
+            <a class="nav-link" href="/tags">Tags</a>
+            <form th:action="@{/logout}" method="post" class="d-inline">
+                <button type="submit" class="btn btn-link nav-link">
+                    <i class="bi bi-box-arrow-right me-1"></i>Logout
+                </button>
+            </form>
+        </div>
+    </div>
+</nav>
+
+<main class="container-fluid px-3 px-xl-5 mt-4">
+    <div class="mb-4">
+        <h2 class="mb-1"><i class="bi bi-graph-up-arrow me-2 text-warning"></i>A股</h2>
+        <div class="text-muted">全部 A 股公司，点击股票查看行情、估值、资金与公司数据</div>
+    </div>
+
+    <form method="get" action="/astocks" class="card bg-dark border-secondary mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="boardFilter" class="form-label">板块</label>
+                    <select class="form-select" id="boardFilter" name="board">
+                        <option th:each="item : ${boards}" th:value="${item}"
+                                th:selected="${board == item}" th:text="${item}">全部</option>
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label for="keywordInput" class="form-label">代码 / 名称</label>
+                    <input class="form-control" id="keywordInput" name="q" th:value="${q}"
+                           placeholder="例如：600519 或 贵州茅台" autocomplete="off">
+                </div>
+                <div class="col-md-2">
+                    <label for="pageSize" class="form-label">每页</label>
+                    <select class="form-select" id="pageSize" name="size">
+                        <option value="25" th:selected="${size == 25}">25</option>
+                        <option value="50" th:selected="${size == 50}">50</option>
+                        <option value="100" th:selected="${size == 100}">100</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search me-1"></i>筛选
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div th:if="${stocks.empty}" class="text-center text-muted py-5">
+        <i class="bi bi-inbox" style="font-size: 3rem"></i>
+        <p class="mt-2">没有符合条件的股票</p>
+    </div>
+
+    <div th:unless="${stocks.empty}" class="card bg-dark border-secondary overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-dark table-striped table-hover align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>代码</th>
+                    <th>名称</th>
+                    <th>板块</th>
+                    <th>行业</th>
+                    <th class="text-end">详情</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="stock : ${stocks.content}">
+                    <td class="font-monospace" th:text="${stock.secCode}">600519</td>
+                    <td>
+                        <a class="link-light fw-semibold text-decoration-none"
+                           th:href="@{/astocks/{code}(code=${stock.secCode})}"
+                           th:text="${stock.secName}">贵州茅台</a>
+                    </td>
+                    <td><span class="badge text-bg-secondary" th:text="${stock.board}">沪主板</span></td>
+                    <td class="text-muted" th:text="${#strings.isEmpty(stock.industry) ? '-' : stock.industry}">-</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-warning"
+                           th:href="@{/astocks/{code}(code=${stock.secCode})}">查看 <i class="bi bi-chevron-right"></i></a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div th:unless="${stocks.empty}" class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3 mb-4">
+        <div class="text-muted">
+            <span th:text="'显示 ' + ${stocks.number * stocks.size + 1} + '-' + ${stocks.number * stocks.size + stocks.content.size()} + '，共 ' + ${stocks.totalElements} + ' 只'">显示范围</span>
+        </div>
+        <nav th:if="${stocks.totalPages > 1}" aria-label="A股分页">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item" th:classappend="${stocks.first} ? 'disabled'">
+                    <a class="page-link" th:href="@{/astocks(board=${board},q=${q},size=${size},page=${stocks.number - 1})}">&laquo;</a>
+                </li>
+                <li class="page-item" th:classappend="${stocks.number == 0} ? 'active'">
+                    <a class="page-link" th:href="@{/astocks(board=${board},q=${q},size=${size},page=0)}">1</a>
+                </li>
+                <li th:if="${stocks.number > 3}" class="page-item disabled"><span class="page-link">…</span></li>
+                <li th:each="i : ${#numbers.sequence(stocks.number - 2, stocks.number + 2)}"
+                    th:if="${i > 0 && i < stocks.totalPages - 1}" class="page-item"
+                    th:classappend="${i == stocks.number} ? 'active'">
+                    <a class="page-link" th:href="@{/astocks(board=${board},q=${q},size=${size},page=${i})}"
+                       th:text="${i + 1}">2</a>
+                </li>
+                <li th:if="${stocks.number < stocks.totalPages - 4}" class="page-item disabled"><span class="page-link">…</span></li>
+                <li class="page-item" th:classappend="${stocks.number == stocks.totalPages - 1} ? 'active'">
+                    <a class="page-link" th:href="@{/astocks(board=${board},q=${q},size=${size},page=${stocks.totalPages - 1})}"
+                       th:text="${stocks.totalPages}">末页</a>
+                </li>
+                <li class="page-item" th:classappend="${stocks.last} ? 'disabled'">
+                    <a class="page-link" th:href="@{/astocks(board=${board},q=${q},size=${size},page=${stocks.number + 1})}">&raquo;</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

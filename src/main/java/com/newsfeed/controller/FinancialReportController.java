@@ -9,15 +9,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-import java.util.List;
 import java.util.Map;
 
 @Controller
@@ -41,48 +37,6 @@ public class FinancialReportController {
     private final FinancialReportRepository financialReportRepository;
     private final FinancialReportFetchService financialReportFetchService;
 
-    @GetMapping
-    public String list(@RequestParam(value = "period", required = false) String reportPeriod,
-                       @RequestParam(value = "q", required = false) String keyword,
-                       @RequestParam(value = "page", defaultValue = "0") int page,
-                       @RequestParam(value = "size", defaultValue = "25") int size,
-                       @RequestParam(value = "sort", required = false) String sortKey,
-                       @RequestParam(value = "dir", defaultValue = "asc") String direction,
-                       Model model) {
-        String activeSort = isValidSortKey(sortKey) ? sortKey : "";
-        String activeDirection = "desc".equalsIgnoreCase(direction) ? "desc" : "asc";
-        List<String> periods = financialReportRepository.findDistinctReportPeriods();
-        String effectivePeriod = reportPeriod == null
-                ? periods.stream().findFirst().orElse("")
-                : reportPeriod;
-        Page<FinancialReport> reports = findReports(
-                effectivePeriod, keyword, page, size, activeSort, activeDirection);
-        model.addAttribute("reports", reports);
-        model.addAttribute("periods", periods);
-        model.addAttribute("period", effectivePeriod);
-        model.addAttribute("q", keyword != null ? keyword : "");
-        model.addAttribute("size", reports.getSize());
-        model.addAttribute("sort", activeSort);
-        model.addAttribute("dir", activeDirection);
-        model.addAttribute("fetching", financialReportFetchService.isFetching());
-        model.addAttribute("backfillEnabled", financialReportFetchService.isHistoricalBackfillEnabled());
-        return "financial";
-    }
-
-    @GetMapping("/api/list")
-    @ResponseBody
-    public Page<FinancialReport> apiList(
-            @RequestParam(value = "period", required = false) String reportPeriod,
-            @RequestParam(value = "q", required = false) String keyword,
-            @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "size", defaultValue = "25") int size,
-            @RequestParam(value = "sort", required = false) String sortKey,
-            @RequestParam(value = "dir", defaultValue = "asc") String direction) {
-        String activeSort = isValidSortKey(sortKey) ? sortKey : "";
-        String activeDirection = "desc".equalsIgnoreCase(direction) ? "desc" : "asc";
-        return findReports(reportPeriod, keyword, page, size, activeSort, activeDirection);
-    }
-
     @PostMapping("/fetch")
     public String fetchNow(RedirectAttributes redirectAttributes) {
         try {
@@ -96,7 +50,7 @@ public class FinancialReportController {
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("errorMsg", "财报抓取失败：" + e.getMessage());
         }
-        return "redirect:/financial";
+        return "redirect:/astocks";
     }
 
     @PostMapping("/backfill")
@@ -113,7 +67,7 @@ public class FinancialReportController {
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("errorMsg", "财报历史补全失败：" + e.getMessage());
         }
-        return "redirect:/financial";
+        return "redirect:/astocks";
     }
 
     private Page<FinancialReport> findReports(String reportPeriod, String keyword, int page, int size,
