@@ -31,42 +31,38 @@
     </div>
 </nav>
 
-<main class="container-fluid px-3 px-xl-5 mt-4">
-    <div class="mb-4">
-        <h2 class="mb-1"><i class="bi bi-graph-up-arrow me-2 text-warning"></i>A股</h2>
-        <div class="text-muted">全部 A 股公司，点击股票查看行情、估值、资金与公司数据</div>
+<main class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0"><i class="bi bi-graph-up-arrow me-2 text-warning"></i>A股</h2>
+        <span class="text-muted">全部 A 股公司，点击股票查看行情、估值、资金与公司数据</span>
     </div>
 
-    <form method="get" action="/astocks" class="card bg-dark border-secondary mb-4">
-        <div class="card-body">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-3">
-                    <label for="boardFilter" class="form-label">板块</label>
-                    <select class="form-select" id="boardFilter" name="board">
-                        <option th:each="item : ${boards}" th:value="${item}"
-                                th:selected="${board == item}" th:text="${item}">全部</option>
-                    </select>
-                </div>
-                <div class="col-md-5">
-                    <label for="keywordInput" class="form-label">代码 / 名称</label>
-                    <input class="form-control" id="keywordInput" name="q" th:value="${q}"
-                           placeholder="例如：600519 或 贵州茅台" autocomplete="off">
-                </div>
-                <div class="col-md-2">
-                    <label for="pageSize" class="form-label">每页</label>
-                    <select class="form-select" id="pageSize" name="size">
-                        <option value="10" th:selected="${size == 10}">10</option>
-                        <option value="25" th:selected="${size == 25}">25</option>
-                        <option value="50" th:selected="${size == 50}">50</option>
-                        <option value="100" th:selected="${size == 100}">100</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-search me-1"></i>筛选
-                    </button>
-                </div>
-            </div>
+    <form method="get" action="/astocks" class="row g-2 mb-3 align-items-end">
+        <div class="col-auto">
+            <label for="boardFilter" class="form-label form-label-sm mb-0">板块</label>
+            <select class="form-select form-select-sm" id="boardFilter" name="board" style="min-width:140px;">
+                <option th:each="item : ${boards}" th:value="${item}"
+                        th:selected="${board == item}" th:text="${item}">全部</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="keywordInput" class="form-label form-label-sm mb-0">代码 / 名称</label>
+            <input class="form-control form-control-sm" id="keywordInput" name="q" th:value="${q}"
+                   placeholder="例如：600519 或 贵州茅台" autocomplete="off" style="min-width:220px;">
+        </div>
+        <div class="col-auto">
+            <label for="pageSize" class="form-label form-label-sm mb-0">每页</label>
+            <select class="form-select form-select-sm" id="pageSize" name="size" style="min-width:80px;">
+                <option value="10" th:selected="${size == 10}">10</option>
+                <option value="25" th:selected="${size == 25}">25</option>
+                <option value="50" th:selected="${size == 50}">50</option>
+                <option value="100" th:selected="${size == 100}">100</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-search me-1"></i>搜索
+            </button>
         </div>
     </form>
 
@@ -75,36 +71,34 @@
         <p class="mt-2">没有符合条件的股票</p>
     </div>
 
-    <div th:unless="${stocks.empty}" class="card bg-dark border-secondary overflow-hidden">
-        <div class="table-responsive">
-            <table class="table table-dark table-striped table-hover align-middle mb-0">
-                <thead>
-                <tr>
-                    <th>代码</th>
-                    <th>名称</th>
-                    <th>板块</th>
-                    <th>行业</th>
-                    <th class="text-end">详情</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr th:each="stock : ${stocks.content}">
-                    <td class="font-monospace" th:text="${stock.secCode}">600519</td>
-                    <td>
-                        <a class="link-light fw-semibold text-decoration-none"
-                           th:href="@{/astocks/{code}(code=${stock.secCode})}"
-                           th:text="${stock.secName}">贵州茅台</a>
-                    </td>
-                    <td><span class="badge text-bg-secondary" th:text="${stock.board}">沪主板</span></td>
-                    <td class="text-muted" th:text="${#strings.isEmpty(stock.industry) ? '-' : stock.industry}">-</td>
-                    <td class="text-end">
-                        <a class="btn btn-sm btn-outline-warning"
-                           th:href="@{/astocks/{code}(code=${stock.secCode})}">查看 <i class="bi bi-chevron-right"></i></a>
-                    </td>
-                </tr>
-                </tbody>
-            </table>
-        </div>
+    <div th:unless="${stocks.empty}" class="table-responsive">
+        <table class="table table-dark table-striped table-hover align-middle">
+            <thead>
+            <tr>
+                <th>代码</th>
+                <th>名称</th>
+                <th>板块</th>
+                <th>行业</th>
+                <th class="text-end">详情</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="stock : ${stocks.content}">
+                <td class="font-monospace" th:text="${stock.secCode}">600519</td>
+                <td>
+                    <a class="link-light fw-semibold text-decoration-none"
+                       th:href="@{/astocks/{code}(code=${stock.secCode})}"
+                       th:text="${stock.secName}">贵州茅台</a>
+                </td>
+                <td><span class="badge text-bg-secondary" th:text="${stock.board}">沪主板</span></td>
+                <td class="text-muted" th:text="${#strings.isEmpty(stock.industry) ? '-' : stock.industry}">-</td>
+                <td class="text-end">
+                    <a class="btn btn-sm btn-outline-primary"
+                       th:href="@{/astocks/{code}(code=${stock.secCode})}">查看 <i class="bi bi-chevron-right"></i></a>
+                </td>
+            </tr>
+            </tbody>
+        </table>
     </div>
 
     <div th:unless="${stocks.empty}" class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3 mb-4">
