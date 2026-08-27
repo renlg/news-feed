@@ -119,6 +119,28 @@ public class AStockService {
         }
     }
 
+    public List<Kline> findMinKlines(String secCode, int limit) {
+        String sql = "SELECT trade_time, open, close, high, low, volume, amount, 0 "
+                + "FROM kline_min5 WHERE sec_code = ? ORDER BY trade_time DESC LIMIT ?";
+        List<Kline> rows = new ArrayList<>();
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, secCode);
+            statement.setInt(2, limit);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    rows.add(new Kline(rs.getString("trade_time"), nullableDouble(rs, "open"),
+                            nullableDouble(rs, "close"), nullableDouble(rs, "high"),
+                            nullableDouble(rs, "low"), nullableDouble(rs, "volume"),
+                            nullableDouble(rs, "amount"), null));
+                }
+            }
+            return rows;
+        } catch (SQLException e) {
+            throw dataError("读取分钟线行情失败", e);
+        }
+    }
+
     public Optional<Valuation> findLatestValuation(String secCode) {
         String sql = "SELECT trade_date, pe_ttm, pb, ps_ttm, total_mv, circ_mv, div_yield "
                 + "FROM valuation WHERE sec_code = ? ORDER BY trade_date DESC LIMIT 1";

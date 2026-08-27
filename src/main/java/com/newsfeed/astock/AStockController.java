@@ -65,6 +65,7 @@ public class AStockController {
 
         model.addAttribute("stock", stock);
         model.addAttribute("klines", aStockService.findKlines(secCode, 250));
+        model.addAttribute("minKlines", aStockService.findMinKlines(secCode, 120));
         model.addAttribute("valuation", aStockService.findLatestValuation(secCode).orElse(null));
         model.addAttribute("moneyFlows", aStockService.findMoneyFlows(secCode, 30));
         model.addAttribute("holderNumbers", aStockService.findHolderNumbers(secCode, 12));

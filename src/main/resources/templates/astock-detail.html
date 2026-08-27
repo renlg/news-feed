@@ -13,7 +13,8 @@
         .table-responsive { max-height: 34rem; }
         .nav-tabs .nav-link { color: var(--bs-secondary-color); }
         .nav-tabs .nav-link.active { font-weight: 600; }
-        #kline-chart { height: 460px; width: 100%; }
+        #min-kline-chart { height: 280px; width: 100%; }
+        #kline-chart { height: 320px; width: 100%; }
     </style>
 </head>
 <body>
@@ -79,8 +80,39 @@
 
     <div class="tab-content">
         <div class="tab-pane fade" th:classappend="${activeTab == 'market'} ? ' show active'" id="pane-market" role="tabpanel">
+            <div class="card bg-dark border-secondary mb-3">
+                <div class="card-header"><i class="bi bi-candlestick-chart me-2 text-warning"></i>分钟线 <small class="text-muted">5分钟K线，最近 2 个交易日</small></div>
+                <div class="card-body p-0">
+                    <div th:if="${#lists.isEmpty(minKlines)}" class="text-muted p-4">暂无分钟线数据（分钟线采集中，稍后可见）</div>
+                    <div th:unless="${#lists.isEmpty(minKlines)}">
+                        <div class="p-3 pb-0">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="分钟线视图切换">
+                                <button type="button" class="btn btn-warning active" id="show-min-chart">K线图</button>
+                                <button type="button" class="btn btn-outline-warning" id="show-min-table">表格</button>
+                            </div>
+                        </div>
+                        <div id="min-chart-view" class="p-2"><div id="min-kline-chart"></div></div>
+                        <div id="min-table-view" class="d-none">
+                            <div class="table-responsive">
+                                <table class="table table-dark table-striped table-hover text-nowrap mb-0">
+                                    <thead><tr><th>时间</th><th class="text-end">开盘</th><th class="text-end">收盘</th><th class="text-end">最高</th><th class="text-end">最低</th><th class="text-end">成交量(手)</th><th class="text-end">成交额(万)</th></tr></thead>
+                                    <tbody><tr th:each="row : ${minKlines}">
+                                        <td th:text="${row.tradeDate}">2026-08-26 09:35</td>
+                                        <td class="text-end" th:text="${row.open == null ? '-' : #numbers.formatDecimal(row.open,1,2)}">-</td>
+                                        <td class="text-end" th:text="${row.close == null ? '-' : #numbers.formatDecimal(row.close,1,2)}">-</td>
+                                        <td class="text-end" th:text="${row.high == null ? '-' : #numbers.formatDecimal(row.high,1,2)}">-</td>
+                                        <td class="text-end" th:text="${row.low == null ? '-' : #numbers.formatDecimal(row.low,1,2)}">-</td>
+                                        <td class="text-end" th:text="${row.volume == null ? '-' : #numbers.formatDecimal(row.volume / 100.0,1,0)}">-</td>
+                                        <td class="text-end" th:text="${row.amount == null ? '-' : #numbers.formatDecimal(row.amount / 10000.0,1,0)}">-</td>
+                                    </tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="card bg-dark border-secondary">
-                <div class="card-header"><i class="bi bi-candlestick-chart me-2 text-warning"></i>日线行情 <small class="text-muted">最近 60 个交易日，新到旧</small></div>
+                <div class="card-header"><i class="bi bi-candlestick-chart me-2 text-warning"></i>日线行情 <small class="text-muted">最近 250 个交易日，新到旧</small></div>
                 <div class="card-body p-0">
                     <div th:if="${#lists.isEmpty(klines)}" class="text-muted p-4">暂无日线行情</div>
                     <div th:unless="${#lists.isEmpty(klines)}">
@@ -242,6 +274,93 @@
 </main>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script th:if="${!#lists.isEmpty(minKlines)}" th:inline="javascript">
+    document.addEventListener('DOMContentLoaded', () => {
+        const sourceMinKlines = /*[[${minKlines}]]*/ [];
+        const minKlines = sourceMinKlines.slice().reverse().filter(row =>
+            row.open != null && row.close != null && row.low != null && row.high != null);
+        const minTimes = minKlines.map(row => row.tradeDate);
+        const minCandleData = minKlines.map(row => [row.open, row.close, row.low, row.high]);
+        const minVolumeData = minKlines.map(row => ({
+            value: row.volume == null ? 0 : row.volume / 100,
+            itemStyle: { color: row.close >= row.open ? '#ef232a' : '#14b143' }
+        }));
+        const minChartElement = document.getElementById('min-kline-chart');
+        const minChartView = document.getElementById('min-chart-view');
+        const minTableView = document.getElementById('min-table-view');
+        const minChartButton = document.getElementById('show-min-chart');
+        const minTableButton = document.getElementById('show-min-table');
+        let minChart;
+
+        const minAxisStyle = {
+            axisLine: { lineStyle: { color: '#495057' } },
+            axisLabel: { color: '#adb5bd' },
+            splitLine: { lineStyle: { color: '#343a40' } }
+        };
+
+        function ensureMinChart() {
+            if (minChart || !minChartElement || minKlines.length === 0) return;
+            minChart = echarts.init(minChartElement);
+            minChart.setOption({
+                backgroundColor: 'transparent',
+                animation: false,
+                legend: { data: ['5分钟K线', '成交量'], textStyle: { color: '#adb5bd' } },
+                tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+                axisPointer: { link: [{ xAxisIndex: 'all' }], label: { backgroundColor: '#495057' } },
+                grid: [
+                    { left: 64, right: 24, top: 48, height: '58%' },
+                    { left: 64, right: 24, top: '78%', height: '14%' }
+                ],
+                xAxis: [
+                    { type: 'category', data: minTimes, boundaryGap: true, axisLabel: { show: false }, axisLine: minAxisStyle.axisLine, splitLine: { show: false } },
+                    { type: 'category', gridIndex: 1, data: minTimes, boundaryGap: true, axisLine: minAxisStyle.axisLine, axisLabel: minAxisStyle.axisLabel, splitLine: { show: false } }
+                ],
+                yAxis: [
+                    { scale: true, position: 'right', axisLine: minAxisStyle.axisLine, axisLabel: minAxisStyle.axisLabel, splitLine: minAxisStyle.splitLine },
+                    { scale: true, gridIndex: 1, position: 'right', name: '量(手)', nameTextStyle: { color: '#adb5bd' }, axisLine: minAxisStyle.axisLine, axisLabel: minAxisStyle.axisLabel, splitLine: { show: false } }
+                ],
+                dataZoom: [
+                    { type: 'inside', xAxisIndex: [0, 1] },
+                    { type: 'slider', xAxisIndex: [0, 1], bottom: 4, height: 16, textStyle: { color: '#adb5bd' }, borderColor: '#495057' }
+                ],
+                series: [
+                    {
+                        name: '5分钟K线',
+                        type: 'candlestick',
+                        data: minCandleData,
+                        itemStyle: { color: '#ef232a', color0: '#14b143', borderColor: '#ef232a', borderColor0: '#14b143' }
+                    },
+                    { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: minVolumeData }
+                ]
+            });
+        }
+
+        function showMinChart() {
+            minChartView.classList.remove('d-none');
+            minTableView.classList.add('d-none');
+            minChartButton.classList.add('active', 'btn-warning');
+            minChartButton.classList.remove('btn-outline-warning');
+            minTableButton.classList.remove('active', 'btn-warning');
+            minTableButton.classList.add('btn-outline-warning');
+            ensureMinChart();
+            window.setTimeout(() => minChart?.resize(), 0);
+        }
+
+        function showMinTable() {
+            minChartView.classList.add('d-none');
+            minTableView.classList.remove('d-none');
+            minTableButton.classList.add('active', 'btn-warning');
+            minTableButton.classList.remove('btn-outline-warning');
+            minChartButton.classList.remove('active', 'btn-warning');
+            minChartButton.classList.add('btn-outline-warning');
+        }
+
+        minChartButton.addEventListener('click', showMinChart);
+        minTableButton.addEventListener('click', showMinTable);
+        window.addEventListener('resize', () => minChart?.resize());
+        if (document.getElementById('pane-market').classList.contains('active')) showMinChart();
+    });
+</script>
 <script th:if="${!#lists.isEmpty(klines)}" th:inline="javascript">
     document.addEventListener('DOMContentLoaded', () => {
         const sourceKlines = /*[[${klines}]]*/ [];
@@ -327,6 +446,7 @@
         tableButton.addEventListener('click', showTable);
         document.querySelector('[data-bs-target="#pane-market"]').addEventListener('shown.bs.tab', () => {
             if (!chartView.classList.contains('d-none')) showChart();
+            showMinChart();
         });
         window.addEventListener('resize', () => chart?.resize());
 
