@@ -64,7 +64,7 @@ public class AStockController {
         String activeTab = DETAIL_TABS.contains(tab) ? tab : "market";
 
         model.addAttribute("stock", stock);
-        model.addAttribute("klines", aStockService.findKlines(secCode, 60));
+        model.addAttribute("klines", aStockService.findKlines(secCode, 250));
         model.addAttribute("valuation", aStockService.findLatestValuation(secCode).orElse(null));
         model.addAttribute("moneyFlows", aStockService.findMoneyFlows(secCode, 30));
         model.addAttribute("holderNumbers", aStockService.findHolderNumbers(secCode, 12));
