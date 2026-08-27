@@ -33,6 +33,8 @@ import java.util.List;
 @Component
 public class RssFeedParser implements FeedParser {
 
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
     private static final int MAX_REDIRECTS = 5;
     private static final long MAX_FEED_BYTES = 10L * 1024 * 1024;
     private static final int MAX_AUTHOR_LENGTH = 255;
@@ -47,7 +49,7 @@ public class RssFeedParser implements FeedParser {
         List<Article> articles = new ArrayList<>();
         try {
             HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(15))
+                    .connectTimeout(CONNECT_TIMEOUT)
                     .followRedirects(HttpClient.Redirect.NEVER)
                     .build();
 
@@ -142,7 +144,7 @@ public class RssFeedParser implements FeedParser {
             validatePublicHttpUri(currentUri);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(currentUri)
-                    .timeout(Duration.ofSeconds(30))
+                    .timeout(REQUEST_TIMEOUT)
                     .header("User-Agent", "NewsFeed/1.0")
                     .GET()
                     .build();
