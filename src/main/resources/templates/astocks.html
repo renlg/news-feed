@@ -37,7 +37,7 @@
         <span class="text-muted">全部 A 股公司，点击股票查看行情、估值、资金与公司数据</span>
     </div>
 
-    <form method="get" action="/astocks" class="row g-2 mb-3 align-items-end">
+    <form method="get" action="/astocks" class="row g-2 mb-3 align-items-end" id="stockFilterForm">
         <div class="col-auto">
             <label for="boardFilter" class="form-label form-label-sm mb-0">板块</label>
             <select class="form-select form-select-sm" id="boardFilter" name="board" style="min-width:140px;">
@@ -66,12 +66,12 @@
         </div>
     </form>
 
-    <div th:if="${stocks.empty}" class="text-center text-muted py-5">
+    <div id="stockEmpty" th:if="${stocks.empty}" class="text-center text-muted py-5">
         <i class="bi bi-inbox" style="font-size: 3rem"></i>
         <p class="mt-2">没有符合条件的股票</p>
     </div>
 
-    <div th:unless="${stocks.empty}" class="table-responsive">
+    <div id="stockTable" th:hidden="${stocks.empty}" class="table-responsive">
         <table class="table table-dark table-striped table-hover align-middle">
             <thead>
             <tr>
@@ -82,7 +82,7 @@
                 <th class="text-end">详情</th>
             </tr>
             </thead>
-            <tbody>
+            <tbody id="stockTableBody">
             <tr th:each="stock : ${stocks.content}">
                 <td class="font-monospace" th:text="${stock.secCode}">600519</td>
                 <td>
@@ -101,7 +101,7 @@
         </table>
     </div>
 
-    <div th:unless="${stocks.empty}" class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3 mb-4">
+    <div id="stockPagination"><div th:unless="${stocks.empty}" class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3 mb-4">
         <div class="text-muted">
             <span th:text="'显示 ' + ${stocks.number * stocks.size + 1} + '-' + ${stocks.number * stocks.size + stocks.content.size()} + '，共 ' + ${stocks.totalElements} + ' 只'">显示范围</span>
         </div>
@@ -130,8 +130,71 @@
                 </li>
             </ul>
         </nav>
-    </div>
+    </div></div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/ajax-pagination.js"></script>
+<script>
+    (function() {
+        var form = document.getElementById('stockFilterForm');
+        var table = document.getElementById('stockTable');
+        var body = document.getElementById('stockTableBody');
+        var empty = document.getElementById('stockEmpty');
+        var pager = document.getElementById('stockPagination');
+        var state = new URLSearchParams(window.location.search);
+        var stockPageSize = state.get('size') || document.getElementById('pageSize').value;
+
+        function renderStock(stock) {
+            var row = document.createElement('tr');
+            var code = row.insertCell(); code.className = 'font-monospace'; code.textContent = stock.secCode;
+            var nameCell = row.insertCell();
+            var name = AjaxPagination.element('a', 'link-light fw-semibold text-decoration-none', stock.secName);
+            name.href = '/astocks/' + encodeURIComponent(stock.secCode); nameCell.appendChild(name);
+            row.insertCell().appendChild(AjaxPagination.element('span', 'badge text-bg-secondary', stock.board));
+            var industry = row.insertCell(); industry.className = 'text-muted'; industry.textContent = stock.industry || '-';
+            var action = row.insertCell(); action.className = 'text-end';
+            var link = AjaxPagination.element('a', 'btn btn-sm btn-outline-primary');
+            link.href = name.href; link.appendChild(document.createTextNode('查看 '));
+            link.appendChild(AjaxPagination.element('i', 'bi bi-chevron-right')); action.appendChild(link);
+            return row;
+        }
+
+        function loadStocks(page, useSelectedSize) {
+            if (useSelectedSize) stockPageSize = document.getElementById('pageSize').value;
+            state = new URLSearchParams(new FormData(form));
+            state.set('page', String(page));
+            state.set('size', stockPageSize);
+            AjaxPagination.request('/astocks/api', state).then(function(data) {
+                state.set('page', String(data.number));
+                stockPageSize = String(data.size);
+                state.set('size', stockPageSize);
+                body.replaceChildren();
+                data.content.forEach(function(stock) { body.appendChild(renderStock(stock)); });
+                table.hidden = data.content.length === 0;
+                if (!empty) {
+                    empty = AjaxPagination.element('div', 'text-center text-muted py-5');
+                    empty.appendChild(AjaxPagination.element('i', 'bi bi-inbox'));
+                    empty.appendChild(AjaxPagination.element('p', 'mt-2', '没有符合条件的股票'));
+                    table.before(empty);
+                }
+                empty.hidden = data.content.length !== 0;
+                pager.replaceChildren(data.content.length ? AjaxPagination.pagination(data, loadStocks, {
+                    radius: 2, rangePrefix: '显示 ', rangeSeparator: '，共 ', rangeSuffix: ' 只'
+                }) : document.createTextNode(''));
+                history.replaceState(null, '', '/astocks?' + state.toString());
+            }).catch(function(error) { window.alert(error.message); });
+        }
+
+        form.addEventListener('submit', function(event) { event.preventDefault(); loadStocks(0, true); });
+        document.getElementById('boardFilter').addEventListener('change', function() { loadStocks(0, true); });
+        document.getElementById('pageSize').addEventListener('change', function() { loadStocks(0, true); });
+        pager.addEventListener('click', function(event) {
+            var link = event.target.closest('a.page-link');
+            if (!link || link.getAttribute('href') === '#') return;
+            event.preventDefault();
+            loadStocks(parseInt(new URL(link.href).searchParams.get('page'), 10));
+        });
+    }());
+</script>
 </body>
 </html>

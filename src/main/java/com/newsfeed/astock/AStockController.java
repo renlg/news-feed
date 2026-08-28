@@ -1,5 +1,8 @@
 package com.newsfeed.astock;
 
+import com.newsfeed.dto.FinancialReportDTO;
+import com.newsfeed.dto.MajorEventDTO;
+import com.newsfeed.dto.PageResponse;
 import com.newsfeed.repository.FinancialReportRepository;
 import com.newsfeed.repository.MajorEventRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Set;
@@ -43,6 +47,19 @@ public class AStockController {
         model.addAttribute("q", keyword == null ? "" : keyword.trim());
         model.addAttribute("size", stocks.size());
         return "astocks";
+    }
+
+    @GetMapping("/api")
+    @ResponseBody
+    public PageResponse<AStockService.Stock> listApi(
+            @RequestParam(value = "board", defaultValue = AStockService.ALL_BOARDS) String board,
+            @RequestParam(value = "q", required = false) String keyword,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
+        String activeBoard = AStockService.BOARDS.contains(board) ? board : AStockService.ALL_BOARDS;
+        AStockService.StockPage result = aStockService.findStocks(activeBoard, keyword, page, size);
+        return new PageResponse<>(result.content(), result.number(), result.size(), result.totalElements(),
+                result.totalPages(), result.isFirst(), result.isLast());
     }
 
     @GetMapping("/{secCode}")
@@ -83,6 +100,41 @@ public class AStockController {
         model.addAttribute("eventSize", normalizedEventSize);
         model.addAttribute("activeTab", activeTab);
         return "astock-detail";
+    }
+
+    @GetMapping("/{secCode}/api/financial")
+    @ResponseBody
+    public PageResponse<FinancialReportDTO> financialApi(
+            @PathVariable String secCode,
+            @RequestParam(value = "fp", defaultValue = "0") int page,
+            @RequestParam(value = "fs", defaultValue = "20") int size) {
+        ensureStockExists(secCode);
+        return PageResponse.from(financialReportRepository.findBySecCodeOrderByReportDateDesc(
+                secCode, PageRequest.of(Math.max(page, 0), normalizePageSize(size))), row ->
+                new FinancialReportDTO(row.getId(), row.getReportPeriod(), row.getReportType(),
+                        row.getNoticeDate(), row.getTotalOperateIncome(), row.getParentNetProfit(),
+                        row.getBasicEps(), row.getWeightAvgRoe(), row.getYstz(), row.getSjltz()));
+    }
+
+    @GetMapping("/{secCode}/api/events")
+    @ResponseBody
+    public PageResponse<MajorEventDTO> eventsApi(
+            @PathVariable String secCode,
+            @RequestParam(value = "ep", defaultValue = "0") int page,
+            @RequestParam(value = "es", defaultValue = "20") int size,
+            @RequestParam(value = "cat", required = false) String category) {
+        ensureStockExists(secCode);
+        String normalizedCategory = category == null ? null : category.trim();
+        return PageResponse.from(majorEventRepository.findPageBySecCode(secCode, normalizedCategory,
+                PageRequest.of(Math.max(page, 0), normalizePageSize(size))), row ->
+                new MajorEventDTO(row.getId(), row.getEventDate(), row.getCategory(), row.getTitle(),
+                        row.getPdfPath(), row.getPdfUrl()));
+    }
+
+    private void ensureStockExists(String secCode) {
+        if (aStockService.findStock(secCode).isEmpty()) {
+            throw new ResponseStatusException(NOT_FOUND, "股票不存在");
+        }
     }
 
     private int normalizePageSize(int size) {

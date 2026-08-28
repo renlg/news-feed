@@ -1,5 +1,8 @@
 package com.newsfeed.controller;
 
+import com.newsfeed.config.HttpUrlSafety;
+import com.newsfeed.dto.FeedSourceDTO;
+import com.newsfeed.dto.PageResponse;
 import com.newsfeed.model.FeedSource;
 import com.newsfeed.model.Tag;
 import com.newsfeed.service.FeedFetchWorker;
@@ -10,6 +13,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
@@ -24,6 +28,7 @@ public class FeedConfigController {
     private final FeedSourceService feedSourceService;
     private final FeedFetchWorker feedFetchWorker;
     private final TagService tagService;
+    private final HttpUrlSafety httpUrlSafety;
 
     @GetMapping
     public String listFeeds(Model model,
@@ -56,6 +61,27 @@ public class FeedConfigController {
         if (errorMsg != null) model.addAttribute("errorMsg", errorMsg);
 
         return "feeds";
+    }
+
+    @GetMapping("/api")
+    @ResponseBody
+    @Transactional(readOnly = true)
+    public PageResponse<FeedSourceDTO> listFeedsApi(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "tagIds", required = false) List<Long> tagIds,
+            @RequestParam(value = "enabled", required = false) Boolean enabled) {
+        List<Long> normalizedTagIds = tagIds == null || tagIds.isEmpty() ? null : tagIds;
+        Page<FeedSource> sourcePage = feedSourceService.findAll(normalizedTagIds, enabled,
+                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100),
+                        Sort.by(Sort.Direction.DESC, "createdAt")));
+        return PageResponse.from(sourcePage, source -> new FeedSourceDTO(
+                source.getId(), source.getName(), source.getUrl(), httpUrlSafety.safeHttpUrl(source.getUrl()),
+                source.getEnabled(), source.getProtocol(), source.getFetchIntervalMinutes(),
+                source.getAiCategorize(), source.getCreatedAt(), source.getLastFetchedAt(),
+                source.getTags().stream().map(tag ->
+                        new FeedSourceDTO.TagDTO(tag.getId(), tag.getName(), tag.getColor())).toList(),
+                feedSourceService.countArticlesBySourceId(source.getId())));
     }
 
     @PostMapping
