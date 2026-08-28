@@ -222,18 +222,7 @@
         <div class="tab-pane fade" th:classappend="${activeTab == 'financial'} ? ' show active'" id="pane-financial" role="tabpanel">
             <div class="card bg-dark border-secondary">
                 <div class="card-header"><i class="bi bi-file-earmark-spreadsheet me-2 text-warning"></i>财报</div>
-                <div class="card-body p-0" id="financialResults" th:data-size="${financialSize}"><div th:if="${financialReports.empty}" class="text-muted p-4">暂无财报数据</div>
-                    <div th:unless="${financialReports.empty}">
-                        <div class="table-responsive"><table class="table table-dark table-striped text-nowrap mb-0"><thead><tr><th>报告期</th><th>类型</th><th>公告日期</th><th class="text-end">营收(亿)</th><th class="text-end">净利润(亿)</th><th class="text-end">EPS</th><th class="text-end">ROE(%)</th><th class="text-end">营收同比(%)</th><th class="text-end">净利同比(%)</th></tr></thead><tbody>
-                            <tr th:each="row : ${financialReports.content}"><td th:text="${row.reportPeriod}">-</td><td th:text="${row.reportType ?: '-'}">-</td><td th:text="${row.noticeDate ?: '-'}">-</td><td class="text-end" th:text="${row.totalOperateIncome == null ? '-' : #numbers.formatDecimal(row.totalOperateIncome / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.parentNetProfit == null ? '-' : #numbers.formatDecimal(row.parentNetProfit / 100000000.0,1,2)}">-</td><td class="text-end" th:text="${row.basicEps == null ? '-' : #numbers.formatDecimal(row.basicEps,1,2)}">-</td><td class="text-end" th:text="${row.weightAvgRoe == null ? '-' : #numbers.formatDecimal(row.weightAvgRoe,1,2)}">-</td><td class="text-end" th:text="${row.ystz == null ? '-' : #numbers.formatDecimal(row.ystz,1,2)}">-</td><td class="text-end" th:text="${row.sjltz == null ? '-' : #numbers.formatDecimal(row.sjltz,1,2)}">-</td></tr>
-                        </tbody></table></div>
-                        <div class="d-flex justify-content-between align-items-center p-3 border-top border-secondary">
-                            <a class="btn btn-sm btn-outline-secondary" th:classappend="${financialReports.first} ? ' disabled'" th:href="${financialReports.first} ? '#' : @{/astocks/{secCode}(secCode=${stock.secCode},tab='financial',fp=${financialReports.number - 1},fs=${financialSize})}">上一页</a>
-                            <span class="small text-muted" th:text="${'第 ' + (financialReports.number + 1) + ' / 共 ' + financialReports.totalPages + ' 页（' + financialReports.totalElements + ' 条）'}">第 1 / 共 1 页</span>
-                            <a class="btn btn-sm btn-outline-secondary" th:classappend="${financialReports.last} ? ' disabled'" th:href="${financialReports.last} ? '#' : @{/astocks/{secCode}(secCode=${stock.secCode},tab='financial',fp=${financialReports.number + 1},fs=${financialSize})}">下一页</a>
-                        </div>
-                    </div>
-                </div>
+                <div class="card-body p-0" id="financialResults" th:data-size="${financialSize}"></div>
             </div>
         </div>
 
@@ -253,22 +242,7 @@
                         <button type="submit" class="btn btn-sm btn-outline-secondary">筛选</button>
                     </form>
                 </div>
-                <div class="card-body p-0" id="eventResults" th:data-size="${eventSize}"><div th:if="${majorEvents.empty}" class="text-muted p-4">暂无重大事件</div>
-                    <div th:unless="${majorEvents.empty}">
-                        <div class="table-responsive"><table class="table table-dark table-striped align-middle mb-0"><thead><tr><th class="text-nowrap">日期</th><th class="text-nowrap">分类</th><th>标题</th><th class="text-nowrap">公告原文</th></tr></thead><tbody>
-                            <tr th:each="event : ${majorEvents.content}"><td class="text-nowrap" th:text="${event.eventDate}">-</td><td><span class="badge text-bg-warning" th:text="${event.category}">-</span></td><td th:text="${event.title}">-</td><td>
-                                <a th:if="${!#strings.isEmpty(event.pdfUrl)}" th:href="${#strings.startsWith(event.pdfUrl, 'http') ? event.pdfUrl : 'http://static.cninfo.com.cn/' + event.pdfUrl}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning"><i class="bi bi-box-arrow-up-right me-1"></i>查看PDF</a>
-                                <a th:if="${#strings.isEmpty(event.pdfUrl) && !#strings.isEmpty(event.pdfPath)}" th:href="@{/events/pdf/{id}(id=${event.id})}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning"><i class="bi bi-file-earmark-pdf me-1"></i>查看PDF</a>
-                                <span th:if="${#strings.isEmpty(event.pdfPath) && #strings.isEmpty(event.pdfUrl)}" class="text-muted">-</span>
-                            </td></tr>
-                        </tbody></table></div>
-                        <div class="d-flex justify-content-between align-items-center p-3 border-top border-secondary">
-                            <a class="btn btn-sm btn-outline-secondary" th:classappend="${majorEvents.first} ? ' disabled'" th:href="${majorEvents.first} ? '#' : @{/astocks/{secCode}(secCode=${stock.secCode},tab='events',cat=${eventCategory},ep=${majorEvents.number - 1},es=${eventSize})}">上一页</a>
-                            <span class="small text-muted" th:text="${'第 ' + (majorEvents.number + 1) + ' / 共 ' + majorEvents.totalPages + ' 页（' + majorEvents.totalElements + ' 条）'}">第 1 / 共 1 页</span>
-                            <a class="btn btn-sm btn-outline-secondary" th:classappend="${majorEvents.last} ? ' disabled'" th:href="${majorEvents.last} ? '#' : @{/astocks/{secCode}(secCode=${stock.secCode},tab='events',cat=${eventCategory},ep=${majorEvents.number + 1},es=${eventSize})}">下一页</a>
-                        </div>
-                    </div>
-                </div>
+                <div class="card-body p-0" id="eventResults" th:data-size="${eventSize}"></div>
             </div>
         </div>
     </div>
@@ -277,7 +251,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="/js/ajax-pagination.js"></script>
 <script>
-    (function() {
+    document.addEventListener('DOMContentLoaded', function() {
         var detail = document.getElementById('stockDetail');
         var secCode = detail.dataset.secCode;
         var financialRoot = document.getElementById('financialResults');
@@ -286,6 +260,15 @@
         var state = new URLSearchParams(window.location.search);
         if (!state.has('fs')) state.set('fs', financialRoot.dataset.size || '20');
         if (!state.has('es')) state.set('es', eventRoot.dataset.size || '20');
+        var initialFinancialPage = Math.max(0, parseInt(state.get('fp'), 10) || 0);
+        var initialEventPage = Math.max(0, parseInt(state.get('ep'), 10) || 0);
+        var validTabs = ['market', 'valuation', 'moneyflow', 'holders', 'margin', 'consensus', 'northbound', 'financial', 'events'];
+        var initialTab = state.get('tab') || 'market';
+        if (validTabs.indexOf(initialTab) === -1) initialTab = 'market';
+        var initialTabButton = document.querySelector('[data-bs-target="#pane-' + initialTab + '"]');
+        if (initialTabButton) bootstrap.Tab.getOrCreateInstance(initialTabButton).show();
+        state.set('tab', initialTabButton ? initialTab : 'market');
+        document.getElementById('event-category').value = state.get('cat') || '';
 
         function number(value, divisor, digits) {
             return value == null ? '-' : (value / (divisor || 1)).toFixed(digits == null ? 2 : digits);
@@ -337,11 +320,12 @@
             wrapper.appendChild(detailPager(page, loadFinancial)); return wrapper;
         }
 
-        function loadFinancial(page) {
+        function loadFinancial(page, selectTab) {
             var params = new URLSearchParams();
             params.set('fp', String(page)); params.set('fs', state.get('fs'));
             AjaxPagination.request('/astocks/' + encodeURIComponent(secCode) + '/api/financial', params).then(function(data) {
-                state.set('tab', 'financial'); state.set('fp', String(data.number)); state.set('fs', String(data.size));
+                if (selectTab !== false) state.set('tab', 'financial');
+                state.set('fp', String(data.number)); state.set('fs', String(data.size));
                 financialRoot.replaceChildren(financialTable(data));
                 history.replaceState(null, '', '/astocks/' + encodeURIComponent(secCode) + '?' + state.toString());
             }).catch(function(error) { window.alert(error.message); });
@@ -376,13 +360,14 @@
             wrapper.appendChild(detailPager(page, loadEvents)); return wrapper;
         }
 
-        function loadEvents(page) {
+        function loadEvents(page, selectTab) {
             var params = new URLSearchParams();
             params.set('ep', String(page)); params.set('es', state.get('es'));
             var category = document.getElementById('event-category').value;
             if (category) params.set('cat', category);
             AjaxPagination.request('/astocks/' + encodeURIComponent(secCode) + '/api/events', params).then(function(data) {
-                state.set('tab', 'events'); state.set('ep', String(data.number)); state.set('es', String(data.size));
+                if (selectTab !== false) state.set('tab', 'events');
+                state.set('ep', String(data.number)); state.set('es', String(data.size));
                 if (category) state.set('cat', category); else state.delete('cat');
                 eventRoot.replaceChildren(eventTable(data));
                 history.replaceState(null, '', '/astocks/' + encodeURIComponent(secCode) + '?' + state.toString());
@@ -401,7 +386,9 @@
             if (!link || link.getAttribute('href') === '#' || !new URL(link.href).searchParams.has('ep')) return;
             event.preventDefault(); loadEvents(parseInt(new URL(link.href).searchParams.get('ep'), 10));
         });
-    }());
+        loadFinancial(initialFinancialPage, false);
+        loadEvents(initialEventPage, false);
+    });
 </script>
 <script th:if="${!#lists.isEmpty(minKlines)}" th:inline="javascript">
     document.addEventListener('DOMContentLoaded', () => {

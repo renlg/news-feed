@@ -86,113 +86,14 @@
         </div>
     </form>
 
-    <div id="searchResultCount" th:if="${articles.totalElements > 0}" class="mb-3 text-muted">
-        Found <span th:text="${articles.totalElements}">0</span> articles
-        <span th:if="${articles.totalPages > 1}">
-            (page <span th:text="${articles.number + 1}">1</span>
-            of <span th:text="${articles.totalPages}">1</span>)
-        </span>
-    </div>
-
-    <div id="searchEmpty" th:if="${articles.empty}" class="text-center text-muted py-5">
-        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-        <p class="mt-2">No articles found. Try a different search term or add more feed sources.</p>
-    </div>
-
-    <div class="list-group" id="searchResults">
-        <a th:each="article : ${articles.content}"
-           th:href="${@httpUrlSafety.safeHttpUrl(article.link)}" target="_blank" rel="noopener noreferrer"
-           class="list-group-item list-group-item-action bg-dark border-secondary mb-2 article-card">
-            <div class="d-flex w-100 justify-content-between">
-                <h5 class="mb-1 text-light" th:text="${article.title}">Article Title</h5>
-                <small class="text-muted text-nowrap ms-3"
-                       th:text="${@canonicalTime.format(article.publishedAt != null ? article.publishedAt : article.fetchedAt)}">
-                    Date
-                </small>
-            </div>
-            <p class="mb-1 text-secondary article-summary"
-               th:if="${article.summary}"
-               th:text="${#strings.abbreviate(article.summary.replaceAll('<[^>]+>', ''), 200)}">
-                Summary text...
-            </p>
-            <div class="d-flex justify-content-between align-items-center mt-1">
-                <small class="text-info">
-                    <i class="bi bi-rss me-1"></i>
-                    <span th:if="${article.feedSource != null}" th:text="${article.feedSource.name}">Source</span>
-                    <span th:if="${article.category != null}" class="badge bg-secondary ms-2" th:text="${article.category}">Category</span>
-                    <span th:if="${article.category == null}" class="badge bg-secondary ms-2">其他</span>
-                    <span th:if="${article.aiProcessed == true && article.aiCategoryDisplayName != null}"
-                          class="badge bg-primary ms-2"
-                          th:text="${'AI分类 · ' + article.aiCategoryDisplayName}">AI分类 · 科技</span>
-                    <span th:if="${article.aiProcessed == true && article.importanceScore != null}"
-                          class="badge bg-warning text-dark ms-1"
-                          th:text="${article.importanceScore + '分'}">8分</span>
-                </small>
-                <small th:if="${article.author}" class="text-muted">
-                    <i class="bi bi-person me-1"></i><span th:text="${article.author}">Author</span>
-                </small>
-            </div>
-        </a>
-    </div>
-
-    <!-- Pagination -->
-    <div id="searchPagination"><div th:if="${articles.totalPages > 1}" class="d-flex justify-content-between align-items-center mt-3">
-        <div class="text-muted">
-            <span th:text="'Showing ' + ${articles.number * articles.size + 1} + '-' + ${articles.number * articles.size + articles.content.size()} + ' of ' + ${articles.totalElements}"></span>
-        </div>
-        <nav>
-            <ul class="pagination pagination-sm mb-0">
-                <li class="page-item" th:classappend="${articles.first} ? 'disabled'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=${articles.number - 1})}" aria-label="Previous">
-                        <span aria-hidden="true">&laquo;</span>
-                    </a>
-                </li>
-                <li th:if="${articles.totalPages > 1}" class="page-item"
-                    th:classappend="${articles.number == 0} ? 'active'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=0)}">1</a>
-                </li>
-                <li th:if="${articles.number > 3}" class="page-item disabled">
-                    <span class="page-link">…</span>
-                </li>
-                <li th:each="i : ${#numbers.sequence(articles.number - 1, articles.number + 1)}"
-                    th:if="${i > 0 && i < articles.totalPages - 1}"
-                    class="page-item" th:classappend="${i == articles.number} ? 'active'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=${i})}" th:text="${i + 1}">1</a>
-                </li>
-                <li th:if="${articles.number < articles.totalPages - 4}" class="page-item disabled">
-                    <span class="page-link">…</span>
-                </li>
-                <li th:if="${articles.totalPages > 1}" class="page-item"
-                    th:classappend="${articles.number == articles.totalPages - 1} ? 'active'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=${articles.totalPages - 1})}" th:text="${articles.totalPages}">Last</a>
-                </li>
-                <li class="page-item" th:classappend="${articles.last} ? 'disabled'">
-                    <a class="page-link" th:href="@{/search(q=${q}, sourceId=${sourceId}, category=${category}, sort=${sort}, size=${size}, page=${articles.number + 1})}" aria-label="Next">
-                        <span aria-hidden="true">&raquo;</span>
-                    </a>
-                </li>
-            </ul>
-        </nav>
-        <div class="d-flex align-items-center gap-1 ms-3">
-            <input type="number" class="form-control form-control-sm" id="searchPageJump"
-                   min="1" th:max="${articles.totalPages}" th:value="${articles.number + 1}"
-                   style="width: 60px;" placeholder="Page"
-                   onkeydown="if(event.key==='Enter')document.getElementById('searchPageJumpBtn').click()">
-            <button class="btn btn-sm btn-outline-secondary" id="searchPageJumpBtn"
-                    th:data-total="${articles.totalPages}"
-                    th:data-q="${q}"
-                    th:data-source-id="${sourceId}"
-                    th:data-category="${category}"
-                    th:data-sort="${sort}"
-                    th:data-size="${size}">Go</button>
-        </div>
-    </div></div>
+    <div class="list-group" id="searchResults"></div>
+    <div id="searchPagination"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="/js/ajax-pagination.js"></script>
 <script>
-    (function () {
+    document.addEventListener('DOMContentLoaded', function () {
         var form = document.getElementById('searchFilterForm');
         var results = document.getElementById('searchResults');
         var count = document.getElementById('searchResultCount');
@@ -201,6 +102,12 @@
         var state = new URLSearchParams(window.location.search);
         if (!state.has('size')) state.set('size', '10');
         var searchPageSize = state.get('size');
+        var initialPage = Math.max(0, parseInt(state.get('page'), 10) || 0);
+        document.getElementById('searchInput').value = state.get('q') || '';
+        document.getElementById('sourceFilter').value = state.get('sourceId') || '';
+        var initialCategory = state.get('category') || '';
+        document.getElementById('categoryFilter').value = initialCategory === '__NO_CATEGORY__' ? '__NULL__' : initialCategory;
+        document.getElementById('sortSelect').value = state.get('sort') || 'newest';
 
         function renderArticle(article) {
             var card = AjaxPagination.element('a', 'list-group-item list-group-item-action bg-dark border-secondary mb-2 article-card');
@@ -260,15 +167,8 @@
             }).catch(function (error) { window.alert(error.message); });
         }
         form.addEventListener('submit', function (event) { event.preventDefault(); load(0); });
-        var jumpBtn = document.getElementById('searchPageJumpBtn');
-        if (jumpBtn) { jumpBtn.addEventListener('click', function (event) { event.preventDefault(); load(parseInt(document.getElementById('searchPageJump').value, 10) - 1); }); }
-        pager.addEventListener('click', function (event) {
-            var link = event.target.closest('a.page-link');
-            if (!link || link.getAttribute('href') === '#') return;
-            event.preventDefault();
-            load(parseInt(new URL(link.href).searchParams.get('page'), 10));
-        });
-    }());
+        load(initialPage);
+    });
 </script>
 </body>
 </html>

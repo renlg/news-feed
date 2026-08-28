@@ -75,6 +75,15 @@
             </select>
         </div>
         <div class="col-auto">
+            <label for="feedPageSize" class="form-label form-label-sm mb-0">Per Page</label>
+            <select class="form-select form-select-sm" id="feedPageSize" name="size" style="min-width:90px;">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+        <div class="col-auto">
             <button type="submit" class="btn btn-sm btn-outline-primary">
                 <i class="bi bi-search me-1"></i>Search
             </button>
@@ -99,143 +108,11 @@
                 <th>Actions</th>
             </tr>
             </thead>
-            <tbody id="feedTableBody">
-            <tr th:each="source : ${sources}">
-                <td>
-                    <form th:action="@{/feeds/{id}/toggle(id=${source.id})}" method="post" class="d-inline">
-                        <input type="hidden" name="_csrf" th:value="${_csrf.token}"/>
-                        <input type="hidden" name="enabled" th:value="${!source.enabled}">
-                        <input type="hidden" name="page" th:value="${sourcePage.number}">
-                        <input type="hidden" name="tagIds" th:value="${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}">
-                        <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent">
-                            <span th:if="${source.enabled}" class="badge bg-success">
-                                <i class="bi bi-check-circle"></i> Active
-                            </span>
-                            <span th:unless="${source.enabled}" class="badge bg-secondary">
-                                <i class="bi bi-pause-circle"></i> Disabled
-                            </span>
-                        </button>
-                    </form>
-                </td>
-                <td class="fw-semibold" th:text="${source.name}">Source Name</td>
-                <td>
-                    <a th:href="${@httpUrlSafety.safeHttpUrl(source.url)}" target="_blank" rel="noopener noreferrer" class="text-info text-truncate d-inline-block"
-                       style="max-width: 250px;" th:text="${source.url}">URL</a>
-                </td>
-                <td><span class="badge bg-info" th:text="${source.protocol}">RSS</span></td>
-                <td>
-                    <span th:each="tag : ${source.tags}"
-                          class="badge me-1"
-                          th:style="'background-color:' + ${tag.color}"
-                          th:text="${tag.name}">Tag</span>
-                    <span th:if="${#sets.isEmpty(source.tags)}" class="text-muted">-</span>
-                </td>
-                <td th:text="${source.fetchIntervalMinutes + ' min'}">15 min</td>
-                <td>
-                    <span th:if="${source.lastFetchedAt}"
-                          th:text="${@canonicalTime.format(source.lastFetchedAt)}">
-                        Never
-                    </span>
-                    <span th:unless="${source.lastFetchedAt}" class="text-muted">Never</span>
-                </td>
-                <td>
-                    <span class="badge bg-dark border border-secondary"
-                          th:text="${articleCounts[source.id]}">0</span>
-                </td>
-                <td>
-                    <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-primary" title="Edit"
-                                th:data-id="${source.id}"
-                                th:data-name="${source.name}"
-                                th:data-url="${source.url}"
-                                th:data-protocol="${source.protocol}"
-                                th:data-interval="${source.fetchIntervalMinutes}"
-                                th:data-enabled="${source.enabled}"
-                                th:data-ai-categorize="${source.aiCategorize}"
-                                th:data-page="${sourcePage.number}"
-                                th:data-tag-ids="${source.tags != null ? #strings.listJoin(source.tags.![id], ',') : ''}"
-                                onclick="editFeed(this)">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <form th:action="@{/feeds/{id}/fetch(id=${source.id})}" method="post"
-                              class="d-inline">
-                            <input type="hidden" name="page" th:value="${sourcePage.number}">
-                            <input type="hidden" name="tagIds" th:value="${tagIds != null ? #strings.listJoin(tagIds, ',') : ''}">
-                            <input type="hidden" name="enabled" th:value="${enabled}">
-                            <button type="submit" class="btn btn-outline-warning" title="Fetch Now">
-                                <i class="bi bi-arrow-clockwise"></i>
-                            </button>
-                        </form>
-                        <button class="btn btn-outline-danger" title="Delete"
-                                th:data-name="${source.name}"
-                                th:data-id="${source.id}"
-                                th:data-page="${sourcePage.number}"
-                                th:data-tag-ids="${tagIds}"
-                                th:data-enabled="${enabled}"
-                                onclick="confirmDelete(this)">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-            <tr th:if="${#lists.isEmpty(sources)}">
-                <td colspan="9" class="text-center text-muted py-4">
-                    No feed sources configured. Click "Add Source" to get started.
-                </td>
-            </tr>
-            </tbody>
+            <tbody id="feedTableBody"></tbody>
         </table>
     </div>
 
-    <!-- Pagination -->
-    <div id="feedPagination"><div th:if="${sourcePage != null and sourcePage.totalPages > 1}" class="d-flex justify-content-between align-items-center mt-3">
-        <div class="text-muted">
-            <span th:text="'Showing ' + ${sourcePage.number * sourcePage.size + 1} + '-' + ${sourcePage.number * sourcePage.size + sources.size()} + ' of ' + ${sourcePage.totalElements}"></span>
-        </div>
-        <nav>
-            <ul class="pagination pagination-sm mb-0">
-                <li class="page-item" th:classappend="${sourcePage.first} ? 'disabled'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number - 1}, tagIds=${tagIds}, enabled=${enabled})}" aria-label="Previous">
-                        <span aria-hidden="true">&laquo;</span>
-                    </a>
-                </li>
-                <li th:if="${sourcePage.totalPages > 1}" class="page-item"
-                    th:classappend="${sourcePage.number == 0} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=0, tagIds=${tagIds}, enabled=${enabled})}">1</a>
-                </li>
-                <li th:if="${sourcePage.number > 3}" class="page-item disabled">
-                    <span class="page-link">…</span>
-                </li>
-                <li th:each="i : ${#numbers.sequence(sourcePage.number - 1, sourcePage.number + 1)}"
-                    th:if="${i > 0 && i < sourcePage.totalPages - 1}"
-                    class="page-item" th:classappend="${i == sourcePage.number} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=${i}, tagIds=${tagIds}, enabled=${enabled})}" th:text="${i + 1}">1</a>
-                </li>
-                <li th:if="${sourcePage.number < sourcePage.totalPages - 4}" class="page-item disabled">
-                    <span class="page-link">…</span>
-                </li>
-                <li th:if="${sourcePage.totalPages > 1}" class="page-item"
-                    th:classappend="${sourcePage.number == sourcePage.totalPages - 1} ? 'active'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.totalPages - 1}, tagIds=${tagIds}, enabled=${enabled})}" th:text="${sourcePage.totalPages}">Last</a>
-                </li>
-                <li class="page-item" th:classappend="${sourcePage.last} ? 'disabled'">
-                    <a class="page-link" th:href="@{/feeds(page=${sourcePage.number + 1}, tagIds=${tagIds}, enabled=${enabled})}" aria-label="Next">
-                        <span aria-hidden="true">&raquo;</span>
-                    </a>
-                </li>
-            </ul>
-        </nav>
-        <div class="d-flex align-items-center gap-1 ms-3">
-            <input type="number" class="form-control form-control-sm" id="feedsPageJump"
-                   min="1" th:max="${sourcePage.totalPages}" th:value="${sourcePage.number + 1}"
-                   style="width: 60px;" placeholder="Page"
-                   onkeydown="if(event.key==='Enter')document.getElementById('feedsPageJumpBtn').click()">
-            <button class="btn btn-sm btn-outline-secondary" id="feedsPageJumpBtn"
-                    th:data-total="${sourcePage.totalPages}"
-                    th:data-tagids="${tagIds}"
-                    th:data-enabled="${enabled}">Go</button>
-        </div>
-    </div></div>
+    <div id="feedPagination"></div>
 
 <!-- Feed Modal -->
 <div class="modal fade" id="feedModal" tabindex="-1" aria-hidden="true">
@@ -554,6 +431,7 @@
             feedListState.set('page', String(data.number));
             feedPageSize = String(data.size);
             feedListState.set('size', feedPageSize);
+            document.getElementById('feedPageSize').value = feedPageSize;
             var body = document.getElementById('feedTableBody');
             body.replaceChildren();
             data.content.forEach(function(source) { body.appendChild(renderFeedRow(source, data.number)); });
@@ -624,19 +502,6 @@
         modal.show();
     }
 
-    var jumpBtn = document.getElementById('feedsPageJumpBtn');
-    if (jumpBtn) {
-        jumpBtn.addEventListener('click', function(event) {
-            event.preventDefault();
-            var input = document.getElementById('feedsPageJump');
-            var p = parseInt(input.value);
-            var total = parseInt(this.dataset.total);
-            if (p >= 1 && p <= total) {
-                loadFeeds(p - 1);
-            }
-        });
-    }
-
     function confirmDelete(btn) {
         if (confirm('Are you sure you want to delete "' + btn.dataset.name + '"? All associated articles will also be deleted.')) {
             var form = document.getElementById('deleteForm');
@@ -657,10 +522,20 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
+        var urlState = new URLSearchParams(window.location.search);
         var filterHidden = document.getElementById('filterTagPickerHidden');
-        var initialTagIds = filterHidden && filterHidden.value
-            ? filterHidden.value.split(',').filter(function(s) { return s.trim() !== ''; })
-            : [];
+        var initialTagIds = [];
+        if (urlState.has('tagIds')) {
+            urlState.getAll('tagIds').forEach(function(value) {
+                value.split(',').forEach(function(id) { if (id.trim()) initialTagIds.push(id.trim()); });
+            });
+        } else if (filterHidden && filterHidden.value) {
+            initialTagIds = filterHidden.value.split(',').filter(function(s) { return s.trim() !== ''; });
+        }
+        if (urlState.has('enabled')) document.getElementById('filterEnabled').value = urlState.get('enabled');
+        feedPageSize = urlState.get('size') || '10';
+        document.getElementById('feedPageSize').value = feedPageSize;
+        var initialPage = Math.max(0, parseInt(urlState.get('page'), 10) || 0);
         initTagPicker('filterTagPicker', allTags, initialTagIds);
         initTagPicker('modalTagPicker', allTags, []);
         document.getElementById('feedFilterForm').addEventListener('submit', function(event) {
@@ -673,12 +548,11 @@
             initTagPicker('filterTagPicker', allTags, []);
             loadFeeds(0);
         });
-        document.getElementById('feedPagination').addEventListener('click', function(event) {
-            var link = event.target.closest('a.page-link');
-            if (!link || link.getAttribute('href') === '#') return;
-            event.preventDefault();
-            loadFeeds(parseInt(new URL(link.href).searchParams.get('page'), 10));
+        document.getElementById('feedPageSize').addEventListener('change', function() {
+            feedPageSize = this.value;
+            loadFeeds(0);
         });
+        loadFeeds(initialPage);
     });
 </script>
 </body>
