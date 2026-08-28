@@ -37,7 +37,7 @@ ssh "${SERVER}" "export JAVA_HOME=/usr/local/jdk17 && \
 source ${DEPLOY_DIR}/env.sh && \
 nohup \${JAVA_HOME}/bin/java -jar ${DEPLOY_DIR}/${JAR_NAME} \
     --server.port=${PORT} \
-    --spring.datasource.url=jdbc:h2:file:${DEPLOY_DIR}/data/newsfeed \
+    --spring.datasource.url=jdbc:h2:file:${DEPLOY_DIR}/data/newsfeed;AUTO_SERVER=TRUE \
     > ${DEPLOY_DIR}/${APP_NAME}.log 2>&1 & \
 echo \$! > ${DEPLOY_DIR}/${APP_NAME}.pid && \
 echo '服务已启动, PID: ' \$(cat ${DEPLOY_DIR}/${APP_NAME}.pid)"
