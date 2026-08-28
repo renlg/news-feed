@@ -85,29 +85,29 @@ public class FeedApiController {
         return ResponseEntity.ok(articles);
     }
 
-    @PostMapping("/ai/process")
-    public ResponseEntity<?> triggerAiProcessing() {
-        int count = articleAiService.triggerProcessing();
-        if (count == 0) {
-            return ResponseEntity.ok(Map.of("message", "没有待处理的文章"));
-        }
-        return ResponseEntity.ok(Map.of("message", "已触发AI处理", "count", count));
-    }
+//    @PostMapping("/ai/process")
+//    public ResponseEntity<?> triggerAiProcessing() {
+//        int count = articleAiService.triggerProcessing();
+//        if (count == 0) {
+//            return ResponseEntity.ok(Map.of("message", "没有待处理的文章"));
+//        }
+//        return ResponseEntity.ok(Map.of("message", "已触发AI处理", "count", count));
+//    }
 
-    @GetMapping("/ai/stats")
-    public ResponseEntity<?> getAiStats() {
-        return ResponseEntity.ok(articleAiService.getStats());
-    }
+//    @GetMapping("/ai/stats")
+//    public ResponseEntity<?> getAiStats() {
+//        return ResponseEntity.ok(articleAiService.getStats());
+//    }
 
-    @PostMapping("/ai/reset")
-    public ResponseEntity<?> resetAiProcessing() {
-        int count = articleAiService.resetTodayProcessing();
-        return ResponseEntity.ok(Map.of("message", "已重置AI处理状态", "count", count));
-    }
+//    @PostMapping("/ai/reset")
+//    public ResponseEntity<?> resetAiProcessing() {
+//        int count = articleAiService.resetTodayProcessing();
+//        return ResponseEntity.ok(Map.of("message", "已重置AI处理状态", "count", count));
+//    }
 
-    @PostMapping("/ai/enable-all")
-    public ResponseEntity<?> enableAiCategorizeForAll() {
-        int count = feedSourceService.enableAiCategorizeForAll();
-        return ResponseEntity.ok(Map.of("message", "已启用AI分类", "count", count));
-    }
+//    @PostMapping("/ai/enable-all")
+//    public ResponseEntity<?> enableAiCategorizeForAll() {
+//        int count = feedSourceService.enableAiCategorizeForAll();
+//        return ResponseEntity.ok(Map.of("message", "已启用AI分类", "count", count));
+//    }
 }

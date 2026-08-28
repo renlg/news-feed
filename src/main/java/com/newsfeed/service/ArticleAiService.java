@@ -86,7 +86,7 @@ public class ArticleAiService {
     }
 
     /** 定时检查并处理未处理的 articles（每 2 分钟执行一次）。 */
-    @Scheduled(fixedDelay = 120000)
+    // @Scheduled(fixedDelay = 120000)
     public void processPendingArticles() {
         if (!processing.compareAndSet(false, true)) {
             log.info("AI处理任务已在执行，跳过本次定时检查");
