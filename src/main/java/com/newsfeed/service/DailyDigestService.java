@@ -79,7 +79,7 @@ public class DailyDigestService {
 
     // 每天早上9点执行，生成前一天的摘要
     // @Scheduled(cron = "0 0 9 * * ?")
-    // 定时生成已迁移至 dataAnalyse 工作流「每日摘要生成」（2026-08-31），手动触发保留
+    // 定时生成已迁移至 dataAnalyse 工作流「每日摘要生成」（2026-08-31）
     public void generateDailyDigest() {
         log.info("开始生成昨日新闻摘要...");
         String yesterday = CanonicalTime.today().minusDays(1).format(DATE_FORMATTER);
@@ -108,6 +108,7 @@ public class DailyDigestService {
         }
     }
 
+    /* 手动触发已迁移至 dataAnalyse 工作流，保留代码但停用。
     // 手动触发生成（异步执行，页面立即返回）
     // 返回 true=任务已提交，false=已有任务在执行中
     public boolean forceGenerateDigestAsync() {
@@ -140,6 +141,7 @@ public class DailyDigestService {
         }, asyncExecutor);
         return true;
     }
+    */
 
     public String getGenerationStatus() {
         return generationStatus.get();

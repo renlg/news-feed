@@ -48,6 +48,7 @@ public class DigestController {
         return "digest";
     }
 
+    /* 手动生成已迁移至 dataAnalyse 工作流，停用页面触发端点。
     @PostMapping("/generate")
     public String generateDigest(RedirectAttributes redirectAttributes) {
         try {
@@ -62,6 +63,7 @@ public class DigestController {
         }
         return "redirect:/digest";
     }
+    */
 
     @GetMapping("/generation-status")
     @ResponseBody
