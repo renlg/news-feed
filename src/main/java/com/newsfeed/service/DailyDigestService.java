@@ -78,7 +78,8 @@ public class DailyDigestService {
     private static final int PROMPT_SUMMARY_LIMIT = 70;
 
     // 每天早上9点执行，生成前一天的摘要
-    @Scheduled(cron = "0 0 9 * * ?")
+    // @Scheduled(cron = "0 0 9 * * ?")
+    // 定时生成已迁移至 dataAnalyse 工作流「每日摘要生成」（2026-08-31），手动触发保留
     public void generateDailyDigest() {
         log.info("开始生成昨日新闻摘要...");
         String yesterday = CanonicalTime.today().minusDays(1).format(DATE_FORMATTER);
