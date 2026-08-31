@@ -547,6 +547,40 @@
             </div>
         </div>
 
+        <!-- 国内财经 -->
+        <div class="category-card" data-category="finance-domestic">
+            <div class="category-header" onclick="toggleCategory('finance-domestic')">
+                <div class="category-badge domestic">
+                    <i class="bi bi-graph-up-arrow" style="color: #f59e0b;"></i>
+                </div>
+                <div class="category-label">
+                    <h3>国内财经</h3>
+                    <span class="category-count" id="count-finance-domestic"></span>
+                </div>
+                <i class="bi bi-chevron-down category-toggle" id="toggle-finance-domestic"></i>
+            </div>
+            <div class="category-body" id="body-finance-domestic">
+                <div th:utext="${#strings.isEmpty(digest.financeDomesticCategory) ? '暂无内容' : digest.financeDomesticCategory}">暂无内容</div>
+            </div>
+        </div>
+
+        <!-- 国外财经 -->
+        <div class="category-card" data-category="finance-international">
+            <div class="category-header" onclick="toggleCategory('finance-international')">
+                <div class="category-badge international">
+                    <i class="bi bi-currency-exchange" style="color: #f87171;"></i>
+                </div>
+                <div class="category-label">
+                    <h3>国外财经</h3>
+                    <span class="category-count" id="count-finance-international"></span>
+                </div>
+                <i class="bi bi-chevron-down category-toggle" id="toggle-finance-international"></i>
+            </div>
+            <div class="category-body" id="body-finance-international">
+                <div th:utext="${#strings.isEmpty(digest.financeInternationalCategory) ? '暂无内容' : digest.financeInternationalCategory}">暂无内容</div>
+            </div>
+        </div>
+
         <!-- 国际要闻 -->
         <div class="category-card" data-category="international">
             <div class="category-header" onclick="toggleCategory('international')">
@@ -575,7 +609,7 @@
 const DEFAULT_SHOW = 5;
 
 function initCategories() {
-    const categories = ['ai', 'tech', 'domestic', 'japan', 'international'];
+    const categories = ['ai', 'tech', 'domestic', 'japan', 'finance-domestic', 'finance-international', 'international'];
     let totalItems = 0;
 
     categories.forEach(cat => {

@@ -36,6 +36,12 @@ public class DailyDigest {
     private String japanCategory;
 
     @Column(columnDefinition = "TEXT")
+    private String financeDomesticCategory;
+
+    @Column(columnDefinition = "TEXT")
+    private String financeInternationalCategory;
+
+    @Column(columnDefinition = "TEXT")
     private String internationalCategory;
 
     @Column(columnDefinition = "TEXT")
