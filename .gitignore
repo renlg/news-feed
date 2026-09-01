@@ -6,3 +6,4 @@ data/
 *.trace.db
 test_feeds.sh
 src/main/resources/application.properties
+deploy-local.sh

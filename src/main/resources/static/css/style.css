@@ -74,6 +74,22 @@ body {
     box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
 }
 
+/* ===== 下拉框统一宽度/滚动（2026-09-01）=====
+   所有 select: 宽度按内容自适应，但不超过容器；选项多时限制高度内部滚动 */
+.form-select {
+    width: auto;
+    max-width: 100%;
+    min-width: 140px;
+    max-height: 300px;
+    overflow-y: auto;
+    text-overflow: ellipsis;
+}
+/* 过滤区紧凑下拉（form-select-sm）也给最小宽度，避免挤在一起 */
+.form-select.form-select-sm {
+    min-width: 120px;
+    max-width: 220px;
+}
+
 .btn-outline-primary {
     --bs-btn-color: #6ea8fe;
     --bs-btn-border-color: #6ea8fe;
