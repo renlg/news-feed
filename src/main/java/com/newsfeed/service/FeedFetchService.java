@@ -28,6 +28,9 @@ public class FeedFetchService {
         LocalDateTime now = CanonicalTime.now();
 
         for (FeedSource source : enabledSources) {
+            if ("data-sync".equalsIgnoreCase(source.getProtocol())) {
+                continue;
+            }
             if (fetchingSourceIds.contains(source.getId())) {
                 log.debug("Feed source {} is still being fetched, skipping", source.getId());
                 continue;

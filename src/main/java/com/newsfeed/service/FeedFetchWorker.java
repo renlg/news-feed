@@ -57,6 +57,10 @@ public class FeedFetchWorker {
             log.info("Feed '{}' is disabled, skipping fetch", source.getName());
             return;
         }
+        if ("data-sync".equalsIgnoreCase(source.getProtocol())) {
+            log.info("Feed '{}' is data-sync source, skipping rss fetch", source.getName());
+            return;
+        }
         feedFetchService.markFetching(source.getId());
         try {
             int saved = 0;
